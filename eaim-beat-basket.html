@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EAIM 비트 & 바스켓 2.5 PRO</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
+        .font-title { font-family: 'Black Han Sans', sans-serif; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .rhythm-score { background: rgba(0, 0, 0, 0.3); padding: 1.2rem; border-radius: 1rem; font-family: monospace; letter-spacing: 2px; }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const getYouTubeId = (url) => {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        };
+
+        const emotionList = [
+            { name: '화남 😡', color: '#ef4444' }, { name: '우울함 🌧️', color: '#3b82f6' },
+            { name: '불안함 😰', color: '#eab308' }, { name: '평온함 😌', color: '#22c55e' },
+            { name: '신남 😆', color: '#f97316' }, { name: '무기력함 🫠', color: '#64748b' }
+        ];
+
+        const App = () => {
+            const [step, setStep] = useState(0);
+            const [apiKey, setApiKey] = useState('');
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [selectedEmotion, setSelectedEmotion] = useState(null);
+            const [prescription, setPrescription] = useState({ songTitle: '', bpm: '', msg: '' });
+            const [youtubeLink, setYoutubeLink] = useState('');
+            const [videoId, setVideoId] = useState('');
+            const [previewId, setPreviewId] = useState('');
+            const [rhythmData, setRhythmData] = useState({ intro: '', teamA: '', teamB: '', teamC: '' });
+            const [studentJournal, setStudentJournal] = useState('');
+            const [teacherFeedback, setTeacherFeedback] = useState('');
+
+            useEffect(() => {
+                const savedKey = localStorage.getItem('gemini_api_key_basket_pro');
+                if (savedKey) { setApiKey(savedKey); setStep(1); }
+            }, []);
+
+            // 링크 입력 즉시 임베드 미리보기 갱신
+            useEffect(() => {
+                const id = getYouTubeId(youtubeLink);
+                setPreviewId(id || '');
+            }, [youtubeLink]);
+
+            // 💡 정제 로직 추가: AI 응답에서 순수 JSON만 추출
+            const parseRobustJSON = (text) => {
+                try {
+                    const match = text.match(/\{[\s\S]*\}/);
+                    if (match) return JSON.parse(match[0]);
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error("JSON 파싱 에러:", text);
+                    return null;
+                }
+            };
+
+            const callGemini = async (prompt, isJSON = false) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
+                const config = { temperature: 0.7, maxOutputTokens: 1000 };
+                // 💡 JSON 모드 명시적 활성화
+                if (isJSON) config.responseMimeType = "application/json";
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: config })
+                });
+
+                if (!response.ok) throw new Error("API 연결 실패");
+                const data = await response.json();
+                const rawText = data.candidates[0].content.parts[0].text;
+
+                return isJSON ? parseRobustJSON(rawText) : rawText;
+            };
+
+            const handleEmotionSelect = async (emotion) => {
+                if (isAnalyzing) return;
+                setSelectedEmotion(emotion);
+                setIsAnalyzing(true);
+                setStep(2);
+                const prompt = `학생 감정: '${emotion.name}'. 이 감정을 승화할 농구 활동용 음악 한 곡 추천(JSON): {"songTitle":"제목","bpm":"숫자","msg":"응원문구"}`;
+                try {
+                    const res = await callGemini(prompt, true);
+                    if (res) setPrescription(res);
+                } catch (e) { alert('분석 실패. 다시 시도해 주세요.'); setStep(1); }
+                finally { setIsAnalyzing(false); }
+            };
+
+            const handleGenerateRhythm = async () => {
+                if (isAnalyzing) return;
+                if (!youtubeLink) return alert("유튜브 링크를 넣어주세요!");
+                const extractedId = getYouTubeId(youtubeLink);
+                if (!extractedId) return alert("올바른 링크가 아닙니다.");
+
+                setVideoId(extractedId);
+                setIsAnalyzing(true);
+
+                const prompt = `농구 리듬 트레이닝 전문가로서 다음 세 팀의 4박자 구음 리듬을 생성하세요. 
+                Team A: 드리블, Team B: 드리블&패스, Team C: 드리블&패스&슛.
+                JSON 형식: {"intro": "목표", "teamA": "리듬", "teamB": "리듬", "teamC": "리듬"}`;
+
+                try {
+                    const res = await callGemini(prompt, true);
+                    if (res) {
+                        setRhythmData(res);
+                        setStep(3);
+                    } else {
+                        throw new Error("데이터 파싱 실패");
+                    }
+                } catch (e) { alert('리듬 생성 중 오류가 발생했습니다. 다시 눌러주세요.'); }
+                finally { setIsAnalyzing(false); }
+            };
+
+            const handleSubmitJournal = async () => {
+                if (isAnalyzing || !studentJournal) return;
+                setIsAnalyzing(true);
+                const prompt = `농구 훈련 후 소감: "${studentJournal}". 다정한 피드백 3문장.`;
+                try {
+                    const res = await callGemini(prompt, false);
+                    setTeacherFeedback(res);
+                    setStep(4);
+                } catch (e) { alert('피드백 오류'); } finally { setIsAnalyzing(false); }
+            };
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen bg-slate-950 flex flex-col relative shadow-2xl font-sans">
+                    <header className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 sticky top-0 z-50">
+                        <h1 className="text-lg font-title text-orange-500 uppercase tracking-tight italic">EAIM 비트 & 바스켓</h1>
+                        {step > 0 && <button onClick={() => window.location.reload()} className="text-[10px] text-slate-500 underline">RESET</button>}
+                    </header>
+
+                    <main className="flex-grow p-6 overflow-y-auto pb-24">
+                        {step === 0 && (
+                            <div className="py-10 text-center animate-fadeIn space-y-6">
+                                <div className="text-7xl">🏀✨</div>
+                                <h2 className="text-xl font-bold font-title uppercase">Rhythm & Basket</h2>
+                                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Gemini API Key" className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-center outline-none focus:border-orange-500" />
+                                <button onClick={() => { localStorage.setItem('gemini_api_key_basket_pro', apiKey.trim()); setStep(1); }} className="w-full bg-orange-600 p-4 rounded-2xl font-bold shadow-xl">훈련 시작</button>
+                            </div>
+                        )}
+
+                        {step === 1 && (
+                            <div className="space-y-8 animate-fadeIn">
+                                <div className="text-center">
+                                    <h2 className="text-2xl font-title text-slate-200">감정 체크</h2>
+                                    <p className="text-xs text-slate-500 mt-2">오늘의 기분에 맞춰 리듬 농구 과제를 분석합니다.</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {emotionList.map(em => (
+                                        <button key={em.name} onClick={() => handleEmotionSelect(em)} className="p-5 rounded-3xl bg-slate-900 border border-slate-800 hover:border-orange-500 transition-all text-center">
+                                            <div className="text-sm font-bold text-slate-200">{em.name}</div>
+                                            <div className="w-full h-1 mt-3 rounded-full" style={{backgroundColor: em.color}}></div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 2 && (
+                            <div className="space-y-6 animate-fadeIn">
+                                <div className="glass-panel p-7 rounded-[2.5rem] border-t-4 border-orange-500">
+                                    <h3 className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-4">리듬 농구과제 분석</h3>
+                                    {isAnalyzing ? (
+                                        <div className="py-10 text-center animate-pulse text-sm text-slate-400">데이터를 분석하고 있습니다...</div>
+                                    ) : (
+                                        <div className="space-y-5">
+                                            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                                                <span className="text-xl font-black text-white">{prescription.songTitle}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm font-bold">
+                                                <span className="text-slate-400 uppercase">TEMPO</span>
+                                                <span className="text-orange-400">{prescription.bpm} BPM</span>
+                                            </div>
+                                            <p className="text-sm italic text-slate-300">"{prescription.msg}"</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {!isAnalyzing && (
+                                    <div className="space-y-4 pt-4 animate-fadeIn">
+                                        <div className="bg-orange-600/20 p-3 rounded-xl text-center text-orange-500 font-bold text-sm">농구 🏀 전용 모드</div>
+                                        <input type="text" value={youtubeLink} onChange={e => setYoutubeLink(e.target.value)} placeholder="분석할 유튜브 주소" className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-sm" />
+
+                                        {previewId && (
+                                            <div className="aspect-video rounded-2xl overflow-hidden border-2 border-slate-800 shadow-xl animate-fadeIn">
+                                                <iframe src={`https://www.youtube.com/embed/${previewId}`} className="w-full h-full" frameBorder="0" allowFullScreen></iframe>
+                                            </div>
+                                        )}
+
+                                        <button onClick={handleGenerateRhythm} disabled={!previewId} className="w-full bg-indigo-600 disabled:bg-slate-800 disabled:text-slate-600 p-5 rounded-2xl font-black text-lg shadow-xl">리듬 농구과제 생성 ✨</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {step === 3 && (
+                            <div className="space-y-6 animate-fadeIn pb-10">
+                                <div className="youtube-box aspect-video rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl">
+                                    <iframe src={`https://www.youtube.com/embed/${videoId}`} className="w-full h-full" frameBorder="0" allowFullScreen></iframe>
+                                </div>
+                                <div className="bg-orange-500/10 p-4 rounded-2xl border-l-4 border-orange-500 text-sm font-bold">
+                                    "{rhythmData.intro}"
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="glass-panel p-5 rounded-2xl border-l-4 border-rose-500">
+                                        <h4 className="text-[11px] font-black text-rose-400 uppercase mb-2">Team A : 드리블</h4>
+                                        <div className="rhythm-score text-xl font-black text-white text-center">{rhythmData.teamA}</div>
+                                    </div>
+                                    <div className="glass-panel p-5 rounded-2xl border-l-4 border-blue-500">
+                                        <h4 className="text-[11px] font-black text-blue-400 uppercase mb-2">Team B : 드리블 & 패스</h4>
+                                        <div className="rhythm-score text-xl font-black text-white text-center">{rhythmData.teamB}</div>
+                                    </div>
+                                    <div className="glass-panel p-5 rounded-2xl border-l-4 border-emerald-500">
+                                        <h4 className="text-[11px] font-black text-emerald-400 uppercase mb-2">Team C : 드리블 & 패스 & 슛</h4>
+                                        <div className="rhythm-score text-xl font-black text-white text-center">{rhythmData.teamC}</div>
+                                    </div>
+                                </div>
+
+                                <div className="pt-6 space-y-4">
+                                    <h3 className="text-center font-title text-orange-500 text-lg uppercase">훈련 일지</h3>
+                                    <textarea value={studentJournal} onChange={e => setStudentJournal(e.target.value)} placeholder="훈련 소감을 적어주세요." className="w-full bg-slate-900 border border-slate-700 p-5 rounded-3xl text-sm h-32 outline-none focus:border-orange-500"></textarea>
+                                    <button onClick={handleSubmitJournal} className="w-full bg-orange-600 p-5 rounded-2xl font-bold">기록 제출 📮</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 4 && (
+                            <div className="space-y-8 animate-fadeIn text-center">
+                                <div className="text-7xl mt-10">🥇</div>
+                                <h2 className="text-2xl font-title text-orange-400 uppercase">Coach Feedback</h2>
+                                <div className="glass-panel p-8 rounded-[3rem] text-left border-t-8 border-orange-500">
+                                    <p className="text-base leading-relaxed text-slate-100 italic">"{teacherFeedback}"</p>
+                                </div>
+                                <button onClick={() => window.location.reload()} className="w-full bg-slate-800 p-5 rounded-2xl font-bold text-slate-400">다음 훈련 준비</button>
+                            </div>
+                        )}
+                    </main>
+                    <footer className="p-4 bg-slate-950 text-center text-[9px] text-slate-700 tracking-widest uppercase border-t border-white/5">
+                        &copy; 2026 EAIM STUDIO | Rhythm & Basketball Sync
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
