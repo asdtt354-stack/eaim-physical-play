@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EAIM 비트 & 바스켓 3.0</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
+        .font-title { font-family: 'Black Han Sans', sans-serif; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .yt-host iframe { width: 100%; height: 100%; display: block; }
+        /* 비트 원 */
+        .beat-ball { background: radial-gradient(circle at 35% 30%, #fb923c, #c2410c 70%); box-shadow: inset -10px -14px 0 rgba(0,0,0,.18); }
+        .beat-pop { animation: beatPop 0.28s ease-out; }
+        @keyframes beatPop { 0% { transform: scale(1.18); filter: brightness(1.35); } 100% { transform: scale(1); filter: brightness(1); } }
+        .tap-pop { animation: tapPop 0.18s ease-out; }
+        @keyframes tapPop { 0% { transform: scale(0.94); } 100% { transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .beat-pop, .tap-pop, .animate-fadeIn { animation: none; } }
+        button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #fb923c; outline-offset: 2px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ───────────────────────── 기본 데이터 ─────────────────────────
+        const API_KEY_STORE = 'gemini_api_key_basket_pro';
+        const LIB_KEY = 'eaim_basket_library_v1';
+        const LEAD = 0.04;          // 화면 신호를 살짝 앞당겨 체감 싱크를 맞춤(초)
+        const MIN_TAPS = 8;
+
+        const EMOTIONS = [
+            { key: 'angry',   name: '화남 😡',     color: '#ef4444', style: '낮고 강하게, 힘을 바닥으로 보내듯 튀겨요.' },
+            { key: 'sad',     name: '우울함 🌧️',   color: '#3b82f6', style: '천천히 깊게, 공이 손으로 돌아오는 느낌에 집중해요.' },
+            { key: 'anxious', name: '불안함 😰',   color: '#eab308', style: '일정한 박에 맞춰 흔들리지 않게 튀겨요.' },
+            { key: 'calm',    name: '평온함 😌',   color: '#22c55e', style: '손목을 부드럽게, 리듬을 타듯 튀겨요.' },
+            { key: 'excited', name: '신남 😆',     color: '#f97316', style: '가볍고 빠르게, 발도 함께 리듬을 타요.' },
+            { key: 'tired',   name: '무기력함 🫠', color: '#64748b', style: '작게 시작해서 한 마디마다 조금씩 크게 튀겨요.' },
+        ];
+        const emotionByKey = (k) => EMOTIONS.find(e => e.key === k);
+
+        // 팀별 동작 패턴 (한 칸 = 한 박)
+        const TEAMS = [
+            { id: 'A', label: 'Team A · 드리블', color: '#f43f5e',
+              bars: [['통', '통', '통', '통']] },
+            { id: 'B', label: 'Team B · 드리블 & 패스', color: '#3b82f6',
+              bars: [['통', '통', '통', '패스']] },
+            { id: 'C', label: 'Team C · 드리블 & 패스 & 슛', color: '#10b981',
+              bars: [['통', '통', '통', '패스'], ['통', '통', '통', '패스'], ['통', '통', '통', '패스'], ['통', '통', '잡고', '슛!']] },
+        ];
+
+        const getYouTubeId = (url) => {
+            if (!url) return null;
+            const m = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/);
+            return (m && m[2].length === 11) ? m[2] : null;
+        };
+
+        const loadLibrary = () => {
+            try { const v = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+            catch (e) { return []; }
+        };
+        const persistLibrary = (lib) => { try { localStorage.setItem(LIB_KEY, JSON.stringify(lib)); } catch (e) {} };
+
+        // ───────────────────────── 템포 계산 ─────────────────────────
+        // 탭 시각(영상 재생 시간)으로 BPM과 첫 박 위치를 동시에 계산
+        const estimateTempo = (taps) => {
+            if (taps.length < 4) return null;
+            const iv = [];
+            for (let i = 1; i < taps.length; i++) iv.push(taps[i] - taps[i - 1]);
+            const sorted = [...iv].sort((a, b) => a - b);
+            const med = sorted[Math.floor(sorted.length / 2)];
+            if (med < 0.2 || med > 2) return null;
+            // 한 박을 건너뛰고 탭해도 박 번호를 맞춰줌
+            const k = taps.map(t => Math.round((t - taps[0]) / med));
+            const n = taps.length;
+            const mk = k.reduce((a, b) => a + b, 0) / n;
+            const mt = taps.reduce((a, b) => a + b, 0) / n;
+            let num = 0, den = 0;
+            for (let i = 0; i < n; i++) { num += (k[i] - mk) * (taps[i] - mt); den += (k[i] - mk) ** 2; }
+            if (!den) return null;
+            const period = num / den;
+            if (!isFinite(period) || period <= 0) return null;
+            const intercept = mt - period * mk;
+            let ss = 0;
+            for (let i = 0; i < n; i++) ss += (taps[i] - (intercept + period * k[i])) ** 2;
+            const jitter = Math.sqrt(ss / n) / period;
+            const offset = ((intercept % period) + period) % period;
+            return { period, bpm: 60 / period, offset, jitter };
+        };
+
+        const tempoAdvice = (bpm) => {
+            const r = Math.round(bpm);
+            if (bpm > 140) return { mult: 0.5, text: `${r} BPM은 드리블하기엔 빨라요. 두 박에 한 번씩(${Math.round(r / 2)} BPM) 튀기도록 바꿨어요.` };
+            if (bpm < 60)  return { mult: 2,   text: `${r} BPM은 아주 느린 곡이에요. 한 박에 두 번씩(${r * 2} BPM) 튀기도록 바꿨어요.` };
+            if (bpm < 75)  return { mult: 1,   text: `느린 곡이에요. 한 박에 한 번 깊게 튀기거나, ×2로 두 번씩 튀겨도 좋아요.` };
+            if (bpm > 125) return { mult: 1,   text: `조금 빠른 곡이에요. 따라가기 어렵다면 ÷2로 바꿔보세요.` };
+            return { mult: 1, text: `드리블하기 딱 좋은 템포예요!` };
+        };
+
+        // ───────────────────────── 유튜브 플레이어 ─────────────────────────
+        let ytApiPromise = null;
+        const loadYT = () => {
+            if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+            if (!ytApiPromise) {
+                ytApiPromise = new Promise(resolve => {
+                    const prev = window.onYouTubeIframeAPIReady;
+                    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(window.YT); };
+                    const s = document.createElement('script');
+                    s.src = 'https://www.youtube.com/iframe_api';
+                    document.head.appendChild(s);
+                });
+            }
+            return ytApiPromise;
+        };
+
+        const YTPlayer = ({ videoId, playerRef, onError }) => {
+            const hostRef = useRef(null);
+            useEffect(() => {
+                let player = null, cancelled = false;
+                loadYT().then(YT => {
+                    if (cancelled || !hostRef.current) return;
+                    hostRef.current.innerHTML = '';
+                    const el = document.createElement('div');
+                    hostRef.current.appendChild(el);
+                    player = new YT.Player(el, {
+                        videoId, width: '100%', height: '100%',
+                        playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+                        events: {
+                            onReady: (e) => { playerRef.current = e.target; },
+                            onError: (e) => onError && onError(e.data),
+                        },
+                    });
+                });
+                return () => {
+                    cancelled = true;
+                    playerRef.current = null;
+                    if (player && player.destroy) player.destroy();
+                };
+            }, [videoId]);
+            return <div ref={hostRef} className="yt-host aspect-video rounded-2xl overflow-hidden border-2 border-slate-800 bg-black shadow-xl"></div>;
+        };
+
+        // 영상 재생 시간을 매 프레임 부드럽게 추정 (getCurrentTime은 계단식으로 갱신됨)
+        const useVideoClock = (playerRef) => {
+            const s = useRef({ t: 0, at: 0, last: -1, playing: false });
+            return useCallback(() => {
+                const p = playerRef.current;
+                if (!p || typeof p.getCurrentTime !== 'function') return { time: 0, playing: false };
+                const now = performance.now();
+                const rep = p.getCurrentTime() || 0;
+                const playing = p.getPlayerState() === 1;
+                const c = s.current;
+                if (!playing) { c.t = rep; c.at = now; c.last = rep; c.playing = false; return { time: rep, playing: false }; }
+                const rate = (p.getPlaybackRate && p.getPlaybackRate()) || 1;
+                let est = c.playing ? c.t + (now - c.at) / 1000 * rate : rep;
+                if (c.playing && rep !== c.last) {
+                    est = Math.abs(est - rep) > 0.25 ? rep : est * 0.8 + rep * 0.2;
+                }
+                c.t = est; c.at = now; c.last = rep; c.playing = true;
+                return { time: est, playing: true };
+            }, []);
+        };
+
+        const beep = (ctx, accent) => {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.frequency.value = accent ? 1320 : 880;
+            g.gain.setValueAtTime(0.22, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+            o.connect(g); g.connect(ctx.destination);
+            o.start(); o.stop(ctx.currentTime + 0.09);
+        };
+
+        const MultButtons = ({ value, onChange, bpm }) => (
+            <div className="grid grid-cols-3 gap-2">
+                {[0.5, 1, 2].map(m => (
+                    <button key={m} onClick={() => onChange(m)}
+                        className={`p-3 rounded-xl text-sm font-bold border transition-colors ${value === m ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300'}`}>
+                        {m === 0.5 ? '÷2' : m === 1 ? '×1' : '×2'}
+                        <div className="text-[11px] font-normal opacity-80">{Math.round(bpm * m)} BPM</div>
+                    </button>
+                ))}
+            </div>
+        );
+
+        // ───────────────────────── 탭 템포 단계 ─────────────────────────
+        const TempoStep = ({ getClock, mode, onConfirm, onBack }) => {
+            const [taps, setTaps] = useState([]);
+            const [hint, setHint] = useState('');
+            const [pulse, setPulse] = useState(0);
+            const [mult, setMult] = useState(null);
+
+            const est = estimateTempo(taps);
+            const enough = taps.length >= MIN_TAPS;
+            const ready = est && enough && est.jitter < 0.1;
+            const shaky = est && enough && est.jitter >= 0.1;
+            const advice = est ? tempoAdvice(est.bpm) : null;
+            const chosenMult = mult ?? (advice ? advice.mult : 1);
+
+            const tap = useCallback(() => {
+                const { time, playing } = getClock();
+                setPulse(p => p + 1);
+                if (!playing) { setHint('먼저 영상의 ▶ 재생 버튼을 눌러 주세요.'); return; }
+                setHint('');
+                setTaps(prev => {
+                    const last = prev[prev.length - 1];
+                    if (last !== undefined && (time - last > 2.5 || time <= last)) return [time];
+                    return [...prev, time].slice(-20);
+                });
+            }, [getClock]);
+
+            useEffect(() => {
+                const onKey = (e) => { if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); tap(); } };
+                window.addEventListener('keydown', onKey);
+                return () => window.removeEventListener('keydown', onKey);
+            }, [tap]);
+
+            const stability = !est ? '' : est.jitter < 0.05 ? '아주 안정적' : est.jitter < 0.1 ? '안정적' : '흔들림';
+
+            return (
+                <div className="space-y-5 animate-fadeIn">
+                    <div className="text-center space-y-1">
+                        <h2 className="text-2xl font-title text-slate-100">박자 두드리기</h2>
+                        <p className="text-sm text-slate-400">영상을 재생하고, 들리는 박자에 맞춰 공을 두드려요.<br />{MIN_TAPS}번 이상 두드리면 템포가 잡혀요.</p>
+                    </div>
+
+                    <button key={pulse} onPointerDown={(e) => { e.preventDefault(); tap(); }}
+                        className="tap-pop beat-ball mx-auto flex w-44 h-44 rounded-full items-center justify-center text-white select-none touch-manipulation">
+                        <div className="text-center">
+                            <div className="text-4xl font-title">{est ? Math.round(est.bpm) : '탭!'}</div>
+                            {est && <div className="text-xs font-bold opacity-90">BPM</div>}
+                        </div>
+                    </button>
+
+                    <div className="flex justify-center gap-1.5" aria-label={`${taps.length}번 두드림`}>
+                        {Array.from({ length: MIN_TAPS }).map((_, i) => (
+                            <div key={i} className={`w-3 h-3 rounded-full ${i < taps.length ? 'bg-orange-500' : 'bg-slate-800'}`}></div>
+                        ))}
+                    </div>
+
+                    {hint && <p className="text-center text-sm text-amber-400 font-bold">{hint}</p>}
+                    {est && enough && <p className={`text-center text-sm font-bold ${shaky ? 'text-amber-400' : 'text-emerald-400'}`}>박자 {stability}{shaky ? ' — 조금 더 일정하게 두드려 볼까요?' : ''}</p>}
+
+                    {ready && (
+                        <div className="glass-panel p-5 rounded-3xl space-y-4 animate-fadeIn">
+                            <p className="text-sm text-slate-200 leading-relaxed">{advice.text}</p>
+                            <MultButtons value={chosenMult} onChange={setMult} bpm={est.bpm} />
+                            <button onClick={() => onConfirm({ period: est.period, bpm: est.bpm, offset: est.offset, mult: chosenMult })}
+                                className="w-full bg-orange-600 p-4 rounded-2xl font-black text-lg shadow-xl">
+                                {mode === 'teacher' ? '추천곡으로 저장' : '이 템포로 훈련 시작 🏀'}
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2">
+                        <button onClick={() => { setTaps([]); setMult(null); }} className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm text-slate-300">처음부터 다시 두드리기</button>
+                        <button onClick={onBack} className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm text-slate-300">곡 다시 고르기</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // ───────────────────────── 훈련 단계 ─────────────────────────
+        const TrainStep = ({ getClock, tempo, setTempo, mult, setMult, barShift, setBarShift, emotion, coachCue, onRetap }) => {
+            const [beat, setBeat] = useState({ n: null, playing: false });
+            const [clickOn, setClickOn] = useState(false);
+            const audioRef = useRef(null);
+            const clickRef = useRef(false);
+            const shiftRef = useRef(barShift);
+            useEffect(() => { shiftRef.current = barShift; }, [barShift]);
+
+            useEffect(() => {
+                let raf, lastN = null, lastPlaying = null;
+                const loop = () => {
+                    const { time, playing } = getClock();
+                    const pe = tempo.period / mult;
+                    const n = Math.floor((time + LEAD - tempo.offset) / pe);
+                    if (n !== lastN || playing !== lastPlaying) {
+                        if (playing && lastN !== null && n !== lastN && clickRef.current && audioRef.current) {
+                            beep(audioRef.current, (((n + shiftRef.current) % 4) + 4) % 4 === 0);
+                        }
+                        lastN = n; lastPlaying = playing;
+                        setBeat({ n, playing });
+                    }
+                    raf = requestAnimationFrame(loop);
+                };
+                raf = requestAnimationFrame(loop);
+                return () => cancelAnimationFrame(raf);
+            }, [getClock, tempo, mult]);
+
+            const toggleClick = () => {
+                if (!audioRef.current) audioRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                audioRef.current.resume();
+                clickRef.current = !clickOn;
+                setClickOn(!clickOn);
+            };
+
+            const n = beat.n ?? 0;
+            const beatInBar = (((n + barShift) % 4) + 4) % 4;
+            const barInPhrase = ((Math.floor((n + barShift) / 4) % 4) + 4) % 4;
+            const effBpm = Math.round(tempo.bpm * mult);
+            const nudge = (d) => setTempo(t => ({ ...t, offset: t.offset + d }));
+
+            return (
+                <div className="space-y-5 animate-fadeIn">
+                    <div className="relative flex flex-col items-center py-2">
+                        <div key={beat.playing ? n : 'idle'}
+                            className={`beat-ball w-40 h-40 rounded-full flex items-center justify-center ${beat.playing ? 'beat-pop' : 'opacity-40'}`}>
+                            <span className="text-6xl font-title text-white">{beat.playing ? beatInBar + 1 : '▶'}</span>
+                        </div>
+                        <div className="mt-3 text-sm font-bold text-orange-400">{effBpm} BPM 드리블</div>
+                        {!beat.playing && <p className="mt-1 text-sm text-slate-400">영상을 재생하면 비트가 시작돼요.</p>}
+                    </div>
+
+                    <div className="bg-orange-500/10 p-4 rounded-2xl border-l-4 border-orange-500 text-sm font-bold text-slate-100 leading-relaxed">
+                        {coachCue || emotion?.style}
+                    </div>
+
+                    <div className="space-y-3">
+                        {TEAMS.map(team => {
+                            const bar = team.bars[barInPhrase % team.bars.length];
+                            return (
+                                <div key={team.id} className="glass-panel p-4 rounded-2xl" style={{ borderLeft: `4px solid ${team.color}` }}>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="text-xs font-black" style={{ color: team.color }}>{team.label}</h4>
+                                        {team.bars.length > 1 && (
+                                            <div className="flex gap-1" aria-label={`${barInPhrase + 1}마디째`}>
+                                                {team.bars.map((_, i) => <div key={i} className="w-2 h-2 rounded-full" style={{ background: i === barInPhrase ? team.color : '#334155' }}></div>)}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {bar.map((cue, i) => {
+                                            const on = beat.playing && i === beatInBar;
+                                            const special = cue !== '통';
+                                            return (
+                                                <div key={i} className="py-3 rounded-xl text-center font-black text-lg transition-colors duration-75"
+                                                    style={{ background: on ? team.color : 'rgba(0,0,0,.3)', color: on ? '#fff' : special ? team.color : '#94a3b8' }}>
+                                                    {cue}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <details className="glass-panel rounded-2xl p-4">
+                        <summary className="text-sm font-bold text-slate-200 cursor-pointer">비트 맞추기 · 속도 조절</summary>
+                        <div className="space-y-4 mt-4">
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => nudge(-0.03)} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">신호가 늦어요 ⏪</button>
+                                <button onClick={() => nudge(0.03)} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">신호가 빨라요 ⏩</button>
+                            </div>
+                            <button onClick={() => setBarShift((barShift + 1) % 4)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">
+                                1박 위치 옮기기 (강박이 음악과 다를 때)
+                            </button>
+                            <MultButtons value={mult} onChange={setMult} bpm={tempo.bpm} />
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={toggleClick} className={`p-3 rounded-xl text-sm border ${clickOn ? 'bg-orange-600 border-orange-500' : 'bg-slate-900 border-slate-700'}`}>
+                                    확인용 클릭음 {clickOn ? '끄기' : '켜기'}
+                                </button>
+                                <button onClick={onRetap} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">박자 다시 두드리기</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            );
+        };
+
+        // ───────────────────────── 선생님 추천곡 ─────────────────────────
+        const LibraryStep = ({ library, setLibrary, onAddSong, onBack }) => {
+            const [link, setLink] = useState('');
+            const [title, setTitle] = useState('');
+            const [emo, setEmo] = useState(EMOTIONS[0].key);
+            const fileRef = useRef(null);
+            const vid = getYouTubeId(link);
+
+            const exportLib = () => {
+                const blob = new Blob([JSON.stringify(library, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'eaim-basket-songs.json';
+                a.click();
+            };
+            const importLib = (e) => {
+                const f = e.target.files[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = () => {
+                    try {
+                        const incoming = JSON.parse(r.result);
+                        if (!Array.isArray(incoming)) throw new Error();
+                        const map = new Map(library.map(s => [s.id, s]));
+                        incoming.forEach(s => { if (s && s.id && s.videoId && s.period) map.set(s.id, s); });
+                        setLibrary([...map.values()]);
+                        alert(`${incoming.length}곡을 불러왔어요.`);
+                    } catch (err) { alert('추천곡 파일 형식이 맞지 않아요. 이 앱에서 내보낸 JSON 파일을 선택해 주세요.'); }
+                };
+                r.readAsText(f);
+                e.target.value = '';
+            };
+
+            return (
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-title text-slate-100">선생님 추천곡</h2>
+                        <p className="text-sm text-slate-400 mt-1">감정별로 곡을 저장해 두면 학생은 고르기만 하면 돼요.</p>
+                    </div>
+
+                    <div className="glass-panel p-5 rounded-3xl space-y-3">
+                        <h3 className="text-sm font-bold text-orange-400">새 곡 추가</h3>
+                        <input value={link} onChange={e => setLink(e.target.value)} placeholder="유튜브 주소" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm" />
+                        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="곡 제목 (예: 가수 - 곡명)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm" />
+                        <select value={emo} onChange={e => setEmo(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">
+                            {EMOTIONS.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
+                        </select>
+                        {link && !vid && <p className="text-xs text-amber-400">유튜브 주소 형식이 아니에요. 공유 버튼으로 복사한 주소를 넣어 주세요.</p>}
+                        <button disabled={!vid || !title.trim()} onClick={() => onAddSong({ videoId: vid, title: title.trim() }, emo)}
+                            className="w-full bg-orange-600 disabled:bg-slate-800 disabled:text-slate-600 p-3 rounded-xl font-bold">
+                            박자 두드리러 가기
+                        </button>
+                    </div>
+
+                    <div className="space-y-4">
+                        {library.length === 0 && <p className="text-center text-sm text-slate-500">아직 저장된 곡이 없어요. 위에서 첫 곡을 추가해 보세요.</p>}
+                        {EMOTIONS.map(e => {
+                            const songs = library.filter(s => s.emotion === e.key);
+                            if (!songs.length) return null;
+                            return (
+                                <div key={e.key}>
+                                    <h4 className="text-sm font-bold mb-2" style={{ color: e.color }}>{e.name}</h4>
+                                    <div className="space-y-2">
+                                        {songs.map(s => (
+                                            <div key={s.id} className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
+                                                <img src={`https://i.ytimg.com/vi/${s.videoId}/default.jpg`} alt="" className="w-14 h-10 object-cover rounded" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm font-bold truncate">{s.title}</div>
+                                                    <div className="text-xs text-slate-500">{Math.round(s.bpm * s.mult)} BPM 드리블</div>
+                                                </div>
+                                                <button onClick={() => { if (confirm(`'${s.title}'을(를) 삭제할까요?`)) setLibrary(library.filter(x => x.id !== s.id)); }}
+                                                    className="text-xs text-slate-500 underline">삭제</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={exportLib} disabled={!library.length} className="bg-slate-900 border border-slate-700 disabled:opacity-40 p-3 rounded-xl text-sm">목록 내보내기</button>
+                        <button onClick={() => fileRef.current.click()} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">목록 불러오기</button>
+                        <input ref={fileRef} type="file" accept="application/json,.json" onChange={importLib} className="hidden" />
+                    </div>
+                    <p className="text-xs text-slate-500 text-center">목록은 이 기기에 저장돼요. 다른 기기에서 쓰려면 내보낸 파일을 불러오세요.</p>
+
+                    <button onClick={onBack} className="w-full bg-slate-800 p-4 rounded-2xl font-bold text-slate-300">학생 화면으로 돌아가기</button>
+                </div>
+            );
+        };
+
+        // ───────────────────────── 앱 ─────────────────────────
+        const App = () => {
+            const [step, setStep] = useState(0);   // 0 키, 1 감정, 2 곡 선택, 3 탭 템포, 4 훈련, 5 피드백, 'lib' 선생님
+            const [apiKey, setApiKey] = useState('');
+            const [busy, setBusy] = useState(false);
+            const [emotion, setEmotion] = useState(null);
+            const [prescription, setPrescription] = useState(null);
+            const [link, setLink] = useState('');
+            const [customTitle, setCustomTitle] = useState('');
+            const [song, setSong] = useState(null);           // { title, videoId }
+            const [tempo, setTempo] = useState(null);         // { period, bpm, offset }
+            const [mult, setMult] = useState(1);
+            const [barShift, setBarShift] = useState(0);
+            const [mode, setMode] = useState('student');
+            const [teacherEmotion, setTeacherEmotion] = useState(null);
+            const [library, setLibraryState] = useState(loadLibrary);
+            const [coachCue, setCoachCue] = useState('');
+            const [journal, setJournal] = useState('');
+            const [feedback, setFeedback] = useState('');
+            const [playerError, setPlayerError] = useState('');
+            const [returnStep, setReturnStep] = useState(1);
+
+            const playerRef = useRef(null);
+            const getClock = useVideoClock(playerRef);
+
+            const setLibrary = (lib) => { setLibraryState(lib); persistLibrary(lib); };
+
+            useEffect(() => {
+                const saved = localStorage.getItem(API_KEY_STORE);
+                if (saved) { setApiKey(saved); setStep(1); }
+            }, []);
+
+            const parseJSON = (text) => {
+                try { const m = text.match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : text); }
+                catch (e) { console.error('JSON 파싱 에러:', text); return null; }
+            };
+
+            const callGemini = async (prompt, isJSON = false) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
+                const generationConfig = { temperature: 0.7, maxOutputTokens: 1000, thinkingConfig: { thinkingBudget: 0 } };
+                if (isJSON) generationConfig.responseMimeType = 'application/json';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig }),
+                });
+                if (!res.ok) throw new Error('API 연결 실패');
+                const data = await res.json();
+                const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+                if (!text) throw new Error('빈 응답');
+                return isJSON ? parseJSON(text) : text.trim();
+            };
+
+            const handleEmotionSelect = async (em) => {
+                if (busy) return;
+                setEmotion(em); setPrescription(null); setLink(''); setCustomTitle('');
+                setStep(2); setBusy(true);
+                const prompt = `학생의 오늘 감정: '${em.name}'. 중학생이 이 감정을 농구 드리블로 표현하고 승화할 수 있도록, 유튜브에서 쉽게 찾을 수 있는 실제 곡 한 곡을 추천해줘. 반드시 JSON만 출력: {"songTitle":"가수 - 곡명","msg":"학생에게 건네는 따뜻한 응원 한 문장"}`;
+                try { const r = await callGemini(prompt, true); if (r) setPrescription(r); }
+                catch (e) { setPrescription({ songTitle: '', msg: '' }); }
+                finally { setBusy(false); }
+            };
+
+            const chooseLibrarySong = (s) => {
+                setSong({ title: s.title, videoId: s.videoId });
+                setTempo({ period: s.period, bpm: s.bpm, offset: s.offset });
+                setMult(s.mult || 1); setBarShift(s.barShift || 0);
+                setCoachCue(''); setPlayerError(''); setMode('student');
+                setStep(4);
+            };
+
+            const chooseLink = () => {
+                const id = getYouTubeId(link);
+                if (!id) return;
+                setSong({ title: customTitle.trim() || prescription?.songTitle || '내가 고른 곡', videoId: id });
+                setTempo(null); setCoachCue(''); setPlayerError(''); setMode('student'); setBarShift(0);
+                setStep(3);
+            };
+
+            const handleTempoConfirm = ({ period, bpm, offset, mult: m }) => {
+                if (mode === 'teacher') {
+                    const item = { id: Date.now().toString(36), emotion: teacherEmotion, title: song.title, videoId: song.videoId, period, bpm, offset, mult: m, barShift: 0 };
+                    setLibrary([...library, item]);
+                    setMode('student'); setSong(null);
+                    setStep('lib');
+                    return;
+                }
+                setTempo({ period, bpm, offset }); setMult(m); setBarShift(0);
+                setStep(4);
+            };
+
+            // 훈련 화면 진입 시 코칭 문구 생성
+            useEffect(() => {
+                if (step !== 4 || !song || !tempo || coachCue || !emotion) return;
+                let cancelled = false;
+                const prompt = `체육관 화면에 띄울 농구 드리블 코칭 문구를 1~2문장으로 써줘. 곡: ${song.title}, 드리블 템포: ${Math.round(tempo.bpm * mult)} BPM, 학생 감정: ${emotion.name}. 감정을 드리블의 세기·높이·자세로 표현하도록 안내하고, 문구만 출력해.`;
+                callGemini(prompt).then(t => { if (!cancelled) setCoachCue(t); }).catch(() => {});
+                return () => { cancelled = true; };
+            }, [step, song, tempo]);
+
+            const handleSubmitJournal = async () => {
+                if (busy || !journal.trim()) return;
+                setBusy(true);
+                const prompt = `중학생의 리듬 농구 훈련 소감: "${journal}". 오늘 감정은 '${emotion?.name || '미선택'}', 곡은 '${song?.title || ''}', 드리블 템포는 ${tempo ? Math.round(tempo.bpm * mult) : '?'} BPM이었어. 코치 선생님으로서 다정한 피드백을 3문장으로 써줘.`;
+                try { setFeedback(await callGemini(prompt)); setStep(5); }
+                catch (e) { alert('피드백을 받지 못했어요. 인터넷 연결과 API 키를 확인하고 다시 눌러 주세요.'); }
+                finally { setBusy(false); }
+            };
+
+            const onPlayerError = (code) => {
+                setPlayerError(code === 101 || code === 150
+                    ? '이 영상은 다른 사이트에서 재생이 막혀 있어요. 다른 영상을 골라 주세요.'
+                    : code === 2 ? '영상 주소를 확인해 주세요.' : '영상을 재생하지 못했어요. 다른 영상을 골라 주세요.');
+            };
+
+            const libSongs = emotion ? library.filter(s => s.emotion === emotion.key) : [];
+            const linkId = getYouTubeId(link);
+            const showPlayer = (step === 3 || step === 4) && song;
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen bg-slate-950 flex flex-col relative shadow-2xl">
+                    <header className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 sticky top-0 z-50 backdrop-blur">
+                        <h1 className="text-lg font-title text-orange-500 italic">EAIM 비트 & 바스켓</h1>
+                        {step !== 0 && (
+                            <div className="flex gap-3 items-center">
+                                {step !== 'lib' && <button onClick={() => { setReturnStep(step === 3 || step === 4 ? 1 : step); setStep('lib'); }} className="text-xs text-slate-300 bg-slate-800 px-3 py-1.5 rounded-full">🧑‍🏫 선생님</button>}
+                                <button onClick={() => window.location.reload()} className="text-xs text-slate-500 underline">처음으로</button>
+                            </div>
+                        )}
+                    </header>
+
+                    <main className="flex-grow p-6 pb-24 space-y-5">
+                        {showPlayer && (
+                            <div className="space-y-2">
+                                <YTPlayer videoId={song.videoId} playerRef={playerRef} onError={onPlayerError} />
+                                <div className="text-sm font-bold text-slate-300 truncate">🎵 {song.title}</div>
+                                {playerError && <p className="text-sm text-amber-400 font-bold">{playerError}</p>}
+                            </div>
+                        )}
+
+                        {step === 0 && (
+                            <div className="py-10 text-center animate-fadeIn space-y-6">
+                                <div className="text-7xl">🏀</div>
+                                <h2 className="text-2xl font-title">리듬 농구 훈련</h2>
+                                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Gemini API Key" className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-center outline-none focus:border-orange-500" />
+                                <button disabled={!apiKey.trim()} onClick={() => { localStorage.setItem(API_KEY_STORE, apiKey.trim()); setStep(1); }} className="w-full bg-orange-600 disabled:bg-slate-800 p-4 rounded-2xl font-bold shadow-xl">훈련 시작</button>
+                            </div>
+                        )}
+
+                        {step === 1 && (
+                            <div className="space-y-8 animate-fadeIn">
+                                <div className="text-center">
+                                    <h2 className="text-2xl font-title text-slate-200">오늘의 기분은?</h2>
+                                    <p className="text-sm text-slate-500 mt-2">기분에 맞는 곡으로 리듬 드리블을 해요.</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {EMOTIONS.map(em => (
+                                        <button key={em.key} onClick={() => handleEmotionSelect(em)} className="p-5 rounded-3xl bg-slate-900 border border-slate-800 hover:border-orange-500 transition-colors text-center">
+                                            <div className="text-sm font-bold text-slate-200">{em.name}</div>
+                                            <div className="w-full h-1 mt-3 rounded-full" style={{ backgroundColor: em.color }}></div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 2 && emotion && (
+                            <div className="space-y-6 animate-fadeIn">
+                                <div className="glass-panel p-6 rounded-[2rem]" style={{ borderTop: `4px solid ${emotion.color}` }}>
+                                    <div className="text-sm font-bold mb-3" style={{ color: emotion.color }}>{emotion.name}</div>
+                                    {busy ? (
+                                        <div className="py-6 text-center animate-pulse text-sm text-slate-400">어울리는 곡을 찾고 있어요...</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {prescription?.songTitle && (
+                                                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                                                    <div className="text-xs text-slate-400 mb-1">AI 추천곡</div>
+                                                    <div className="text-lg font-black text-white">{prescription.songTitle}</div>
+                                                </div>
+                                            )}
+                                            {prescription?.msg && <p className="text-sm text-slate-300">"{prescription.msg}"</p>}
+                                            <p className="text-sm text-orange-300 font-bold">드리블 방법: {emotion.style}</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {libSongs.length > 0 && (
+                                    <div className="space-y-2">
+                                        <h3 className="text-sm font-bold text-slate-200">선생님 추천곡 · 바로 시작</h3>
+                                        {libSongs.map(s => (
+                                            <button key={s.id} onClick={() => chooseLibrarySong(s)} className="w-full flex items-center gap-3 bg-slate-900 border border-slate-800 hover:border-orange-500 p-3 rounded-xl text-left transition-colors">
+                                                <img src={`https://i.ytimg.com/vi/${s.videoId}/default.jpg`} alt="" className="w-14 h-10 object-cover rounded" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm font-bold truncate">{s.title}</div>
+                                                    <div className="text-xs text-slate-500">{Math.round(s.bpm * s.mult)} BPM 드리블</div>
+                                                </div>
+                                                <span className="text-orange-400 text-lg">▶</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!busy && (
+                                    <div className="space-y-3">
+                                        <h3 className="text-sm font-bold text-slate-200">직접 곡 고르기</h3>
+                                        {prescription?.songTitle && (
+                                            <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(prescription.songTitle)}`} target="_blank" rel="noopener"
+                                                className="block w-full text-center bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm text-slate-300">
+                                                유튜브에서 추천곡 찾기 ↗
+                                            </a>
+                                        )}
+                                        <input value={link} onChange={e => setLink(e.target.value)} placeholder="유튜브 주소 붙여넣기" className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-sm" />
+                                        {linkId && (
+                                            <div className="flex gap-3 items-center animate-fadeIn">
+                                                <img src={`https://i.ytimg.com/vi/${linkId}/mqdefault.jpg`} alt="" className="w-28 rounded-lg" />
+                                                <input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="곡 제목 (선택)" className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm" />
+                                            </div>
+                                        )}
+                                        {link && !linkId && <p className="text-xs text-amber-400">유튜브 주소 형식이 아니에요. 공유 버튼으로 복사한 주소를 넣어 주세요.</p>}
+                                        <button onClick={chooseLink} disabled={!linkId} className="w-full bg-indigo-600 disabled:bg-slate-800 disabled:text-slate-600 p-5 rounded-2xl font-black text-lg shadow-xl">
+                                            박자 두드리러 가기 🥁
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {step === 3 && song && (
+                            <TempoStep key={song.videoId + mode} getClock={getClock} mode={mode}
+                                onConfirm={handleTempoConfirm}
+                                onBack={() => { setSong(null); setStep(mode === 'teacher' ? 'lib' : 2); setMode('student'); }} />
+                        )}
+
+                        {step === 4 && song && tempo && (
+                            <>
+                                <TrainStep getClock={getClock} tempo={tempo} setTempo={setTempo} mult={mult} setMult={setMult}
+                                    barShift={barShift} setBarShift={setBarShift} emotion={emotion} coachCue={coachCue}
+                                    onRetap={() => setStep(3)} />
+                                <div className="pt-4 space-y-3">
+                                    <h3 className="text-center font-title text-orange-500 text-lg">훈련 일지</h3>
+                                    <textarea value={journal} onChange={e => setJournal(e.target.value)} placeholder="박자에 맞춰 드리블해 보니 어땠나요? 기분은 어떻게 달라졌나요?" className="w-full bg-slate-900 border border-slate-700 p-5 rounded-3xl text-sm h-32 outline-none focus:border-orange-500"></textarea>
+                                    <button onClick={handleSubmitJournal} disabled={busy || !journal.trim()} className="w-full bg-orange-600 disabled:bg-slate-800 p-5 rounded-2xl font-bold">
+                                        {busy ? '코치 선생님이 읽는 중...' : '일지 제출 📮'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        {step === 5 && (
+                            <div className="space-y-8 animate-fadeIn text-center">
+                                <div className="text-7xl mt-10">🥇</div>
+                                <h2 className="text-2xl font-title text-orange-400">코치 피드백</h2>
+                                <div className="glass-panel p-8 rounded-[3rem] text-left border-t-8 border-orange-500">
+                                    <p className="text-base leading-relaxed text-slate-100">{feedback}</p>
+                                </div>
+                                <button onClick={() => window.location.reload()} className="w-full bg-slate-800 p-5 rounded-2xl font-bold text-slate-300">다음 훈련 준비</button>
+                            </div>
+                        )}
+
+                        {step === 'lib' && (
+                            <LibraryStep library={library} setLibrary={setLibrary}
+                                onAddSong={(s, emo) => { setSong(s); setTeacherEmotion(emo); setMode('teacher'); setPlayerError(''); setStep(3); }}
+                                onBack={() => setStep(emotion && returnStep === 2 ? 2 : 1)} />
+                        )}
+                    </main>
+
+                    <footer className="p-4 bg-slate-950 text-center text-[10px] text-slate-700 tracking-widest border-t border-white/5">
+                        &copy; 2026 EAIM STUDIO | Rhythm & Basketball Sync
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
