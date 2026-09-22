@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>팀 편성 · 학급 리그 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .team { border-radius: 16px; padding: 14px; background: var(--card); border-top: 5px solid; }
+    .team h3 { display: flex; justify-content: space-between; }
+    .member { display: flex; justify-content: space-between; width: 100%; background: #1e293b; border-radius: 10px; padding: 8px 10px; margin-top: 6px; font-weight: 400; font-size: 14px; border: 2px solid transparent; text-align: left; }
+    .member.picked { border-color: var(--accent); background: #3b1d0a; }
+    .member small { color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chips button { font-weight: 400; font-size: 14px; padding: 6px 12px; border-radius: 999px; }
+    .chips button.off { opacity: .35; text-decoration: line-through; }
+    .match { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .match .t { flex: 1; font-weight: 700; font-size: 14px; }
+    .match .t.r { text-align: right; }
+    .match input { width: 56px; text-align: center; padding: 8px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>팀 편성 · 학급 리그</h1><a href="index.html">← 체육 플랫폼</a></header>
+<div class="wrap wide">
+    <div class="tabs" style="margin-bottom:18px">
+        <button class="sel" data-tab="make">팀 편성</button>
+        <button data-tab="league">학급 리그</button>
+    </div>
+
+    <!-- 팀 편성 -->
+    <section id="tabMake" class="stack">
+        <div class="card stack">
+            <h2>1. 실력 기준</h2>
+            <div class="row">
+                <button id="srcRecord" class="sel small">기록 측정 앱 점수 사용</button>
+                <button id="srcManual" class="small">직접 입력</button>
+            </div>
+            <div id="recordBox">
+                <p class="muted small-text" id="recordInfo"></p>
+                <div class="chips" id="eventChips"></div>
+            </div>
+            <div id="manualBox" class="hidden">
+                <textarea id="manualText" rows="8" placeholder="한 줄에 한 명: 이름 실력(1~5)&#10;김민준 4&#10;이서연 3&#10;실력을 비우면 3으로 계산해요"></textarea>
+            </div>
+        </div>
+
+        <div class="card stack">
+            <h2>2. 오늘 참여 학생</h2>
+            <p class="muted small-text">결석하거나 견학하는 학생을 눌러서 빼 주세요.</p>
+            <div class="chips" id="studentChips"></div>
+        </div>
+
+        <div class="card">
+            <h2>3. 팀 수</h2>
+            <div class="row">
+                <select id="teamCount"></select>
+                <button class="primary grow" id="btnMake">팀 짜기</button>
+            </div>
+        </div>
+
+        <div id="resultBox" class="hidden stack">
+            <div class="row"><h2 class="grow" style="margin:0">편성 결과</h2><span class="muted small-text" id="balanceInfo"></span></div>
+            <p class="muted small-text">학생 두 명을 차례로 누르면 서로 자리를 바꿔요.</p>
+            <div class="teams" id="teams"></div>
+            <div class="row">
+                <button id="btnShuffle">다른 조합으로 다시 짜기</button>
+                <button class="primary grow" id="btnToLeague">이 팀으로 리그 만들기</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 리그 -->
+    <section id="tabLeague" class="hidden stack">
+        <div id="leagueEmpty" class="card muted">아직 리그가 없어요. 팀 편성 탭에서 팀을 짜고 "이 팀으로 리그 만들기"를 눌러 주세요.</div>
+        <div id="leagueBox" class="hidden stack">
+            <div class="card">
+                <h2>순위표</h2>
+                <div style="overflow-x:auto"><table id="standings"></table></div>
+                <p class="muted small-text" style="margin:8px 0 0">승 3점 · 무 1점 · 패 0점. 승점이 같으면 득실차, 다득점 순이에요.</p>
+            </div>
+            <div class="card">
+                <h2>경기 일정</h2>
+                <div id="matches"></div>
+            </div>
+            <div class="row">
+                <button id="btnCsv">결과 엑셀(CSV)로 내보내기</button>
+                <button class="ghost" id="btnResetLeague">리그 지우기</button>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+const COLORS = ['#f43f5e', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#06b6d4', '#f97316', '#ec4899'];
+const rec = PE.load('eaim_pe_record_v1', null);
+let src = rec && rec.students && rec.students.length ? 'record' : 'manual';
+let selEvents = new Set((rec?.events || []).filter(e => rec.records.some(r => r.eventId === e.id)).map(e => e.id));
+let absent = new Set();
+let teams = null, picked = null;
+let league = PE.load('eaim_pe_league_v1', null);
+
+// 기록 측정 앱과 같은 점수 계산
+const scoreOf = (ev, v) => { for (const r of [...ev.table].sort((a, b) => b.score - a.score)) if (ev.type === 'time' ? v <= r.cut : v >= r.cut) return r.score; return ev.baseScore; };
+const bestOf = (ev, vals) => ev.type === 'time' ? Math.min(...vals) : Math.max(...vals);
+
+function roster() {
+    if (src === 'record' && rec) {
+        const evs = rec.events.filter(e => selEvents.has(e.id));
+        const list = rec.students.map(s => {
+            const scores = evs.map(ev => {
+                const vals = rec.records.filter(r => r.eventId === ev.id && r.studentId === s.id).map(r => r.value);
+                return vals.length ? scoreOf(ev, bestOf(ev, vals)) : null;
+            }).filter(v => v != null);
+            return { id: s.id, name: s.name, skill: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null };
+        });
+        const known = list.filter(s => s.skill != null);
+        const avg = known.length ? known.reduce((a, s) => a + s.skill, 0) / known.length : 5;
+        return list.map(s => s.skill == null ? { ...s, skill: avg, guessed: true } : s);
+    }
+    return PE.$('manualText').value.split('\n').map(l => l.trim()).filter(Boolean).map((l, i) => {
+        const m = l.match(/^(.*?)[\s,]+(\d+(?:\.\d+)?)$/);
+        return { id: 'm' + i + (m ? m[1] : l), name: m ? m[1].trim() : l, skill: m ? parseFloat(m[2]) : 3 };
+    });
+}
+
+function renderSource() {
+    PE.$('srcRecord').classList.toggle('sel', src === 'record');
+    PE.$('srcManual').classList.toggle('sel', src === 'manual');
+    PE.$('recordBox').classList.toggle('hidden', src !== 'record');
+    PE.$('manualBox').classList.toggle('hidden', src !== 'manual');
+    if (src === 'record') {
+        if (!rec || !rec.students?.length) {
+            PE.$('recordInfo').innerHTML = '기록 측정 앱에 저장된 명단이 없어요. 기록 측정 앱에서 명단과 기록을 넣거나, "직접 입력"을 사용해 주세요.';
+            PE.$('eventChips').innerHTML = '';
+        } else {
+            PE.$('recordInfo').textContent = `${rec.className || '우리 반'} · ${rec.students.length}명. 실력 계산에 쓸 종목을 골라 주세요. 선택한 종목 점수의 평균으로 팀을 나눠요.`;
+            PE.$('eventChips').innerHTML = rec.events.map(e => {
+                const n = new Set(rec.records.filter(r => r.eventId === e.id).map(r => r.studentId)).size;
+                return `<button data-ev="${e.id}" class="${selEvents.has(e.id) ? 'sel' : ''}">${PE.esc(e.name)} (${n}명)</button>`;
+            }).join('');
+        }
+    }
+    renderStudents();
+}
+function renderStudents() {
+    const list = roster();
+    PE.$('studentChips').innerHTML = list.length ? list.map(s => `<button data-st="${PE.esc(s.id)}" class="${absent.has(s.id) ? 'off' : ''}">${PE.esc(s.name)}</button>`).join('') : '<span class="muted small-text">학생이 없어요.</span>';
+    const n = list.filter(s => !absent.has(s.id)).length, sel = PE.$('teamCount'), cur = +sel.value || 4;
+    sel.innerHTML = [2, 3, 4, 5, 6, 7, 8].filter(k => k <= Math.max(2, n)).map(k => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}팀 (팀당 약 ${Math.round(n / k) || 0}명)</option>`).join('');
+}
+
+// ── 팀 나누기: 뱀 순서로 배정한 뒤 맞바꾸기로 균형 맞추기 ──
+const teamAvg = (t) => t.members.length ? t.members.reduce((a, s) => a + s.skill, 0) / t.members.length : 0;
+const spread = (ts) => { const a = ts.map(teamAvg); const m = a.reduce((x, y) => x + y, 0) / a.length; return a.reduce((x, y) => x + (y - m) ** 2, 0); };
+function makeTeams(k) {
+    const list = roster().filter(s => !absent.has(s.id)).map(s => ({ ...s, r: s.skill + (Math.random() - 0.5) * 0.8 }));
+    list.sort((a, b) => b.r - a.r);
+    const ts = Array.from({ length: k }, (_, i) => ({ name: `${i + 1}팀`, color: COLORS[i % COLORS.length], members: [] }));
+    list.forEach((s, i) => { const round = Math.floor(i / k), pos = i % k; ts[round % 2 ? k - 1 - pos : pos].members.push(s); });
+    let best = spread(ts);
+    for (let it = 0; it < 3000; it++) {
+        const a = Math.floor(Math.random() * k), b = Math.floor(Math.random() * k);
+        if (a === b || !ts[a].members.length || !ts[b].members.length) continue;
+        const i = Math.floor(Math.random() * ts[a].members.length), j = Math.floor(Math.random() * ts[b].members.length);
+        [ts[a].members[i], ts[b].members[j]] = [ts[b].members[j], ts[a].members[i]];
+        const sp = spread(ts);
+        if (sp <= best) best = sp; else [ts[a].members[i], ts[b].members[j]] = [ts[b].members[j], ts[a].members[i]];
+    }
+    return ts;
+}
+function renderTeams() {
+    PE.$('resultBox').classList.toggle('hidden', !teams);
+    if (!teams) return;
+    const avgs = teams.map(teamAvg);
+    PE.$('balanceInfo').textContent = `팀 평균 실력 차이 ${(Math.max(...avgs) - Math.min(...avgs)).toFixed(2)}점`;
+    PE.$('teams').innerHTML = teams.map((t, ti) => `
+        <div class="team" style="border-color:${t.color}">
+            <h3><span style="color:${t.color}">${t.name}</span><small class="muted">${t.members.length}명 · 평균 ${teamAvg(t).toFixed(1)}</small></h3>
+            ${t.members.map((s, si) => `<button class="member ${picked && picked[0] === ti && picked[1] === si ? 'picked' : ''}" data-t="${ti}" data-s="${si}">
+                <span>${PE.esc(s.name)}</span><small>${s.guessed ? '기록 없음' : s.skill.toFixed(1)}</small></button>`).join('')}
+        </div>`).join('');
+}
+
+// ── 리그 ──
+function roundRobin(n) {
+    const ids = [...Array(n).keys()]; if (n % 2) ids.push(null);
+    const m = ids.length, rounds = [];
+    for (let r = 0; r < m - 1; r++) {
+        const games = [];
+        for (let i = 0; i < m / 2; i++) { const a = ids[i], b = ids[m - 1 - i]; if (a !== null && b !== null) games.push(r % 2 ? [b, a] : [a, b]); }
+        rounds.push(games);
+        ids.splice(1, 0, ids.pop());
+    }
+    return rounds;
+}
+function standings() {
+    const rows = league.teams.map((t, i) => ({ i, name: t.name, color: t.color, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 }));
+    league.matches.forEach(mt => {
+        if (mt.sa === '' || mt.sb === '' || mt.sa == null || mt.sb == null) return;
+        const a = rows[mt.a], b = rows[mt.b], sa = +mt.sa, sb = +mt.sb;
+        a.p++; b.p++; a.gf += sa; a.ga += sb; b.gf += sb; b.ga += sa;
+        if (sa > sb) { a.w++; b.l++; } else if (sa < sb) { b.w++; a.l++; } else { a.d++; b.d++; }
+    });
+    rows.forEach(r => { r.pts = r.w * 3 + r.d; r.gd = r.gf - r.ga; });
+    return rows.sort((x, y) => y.pts - x.pts || y.gd - x.gd || y.gf - x.gf);
+}
+function renderLeague() {
+    PE.$('leagueEmpty').classList.toggle('hidden', !!league);
+    PE.$('leagueBox').classList.toggle('hidden', !league);
+    if (!league) return;
+    renderStandingsOnly(standings());
+    let html = '', lastRound = -1;
+    league.matches.forEach((mt, i) => {
+        if (mt.round !== lastRound) { html += `<h3 style="margin:14px 0 2px;color:var(--accent)">${mt.round + 1}라운드</h3>`; lastRound = mt.round; }
+        const A = league.teams[mt.a], B = league.teams[mt.b];
+        html += `<div class="match"><span class="t r"><span class="dot" style="background:${A.color}"></span>${PE.esc(A.name)}</span>
+            <input type="number" inputmode="numeric" min="0" data-m="${i}" data-side="sa" value="${mt.sa ?? ''}">
+            <span class="muted">:</span>
+            <input type="number" inputmode="numeric" min="0" data-m="${i}" data-side="sb" value="${mt.sb ?? ''}">
+            <span class="t"><span class="dot" style="background:${B.color}"></span>${PE.esc(B.name)}</span></div>`;
+    });
+    PE.$('matches').innerHTML = html;
+}
+
+// ── 이벤트 ──
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('sel', x === b));
+    PE.$('tabMake').classList.toggle('hidden', b.dataset.tab !== 'make');
+    PE.$('tabLeague').classList.toggle('hidden', b.dataset.tab !== 'league');
+    if (b.dataset.tab === 'league') renderLeague();
+});
+PE.$('srcRecord').onclick = () => { src = 'record'; absent.clear(); renderSource(); };
+PE.$('srcManual').onclick = () => { src = 'manual'; absent.clear(); renderSource(); };
+PE.$('manualText').oninput = renderStudents;
+PE.$('eventChips').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; const id = b.dataset.ev; selEvents.has(id) ? selEvents.delete(id) : selEvents.add(id); renderSource(); };
+PE.$('studentChips').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; const id = b.dataset.st; absent.has(id) ? absent.delete(id) : absent.add(id); renderStudents(); };
+const doMake = () => {
+    const n = roster().filter(s => !absent.has(s.id)).length;
+    if (n < 2) { alert('참여 학생이 2명 이상이어야 해요.'); return; }
+    teams = makeTeams(+PE.$('teamCount').value); picked = null; renderTeams();
+    PE.$('resultBox').scrollIntoView({ behavior: 'smooth' });
+};
+PE.$('btnMake').onclick = doMake;
+PE.$('btnShuffle').onclick = doMake;
+PE.$('teams').onclick = (e) => {
+    const b = e.target.closest('.member'); if (!b) return;
+    const t = +b.dataset.t, s = +b.dataset.s;
+    if (!picked) picked = [t, s];
+    else {
+        if (picked[0] !== t || picked[1] !== s) { const A = teams[picked[0]].members, B = teams[t].members; [A[picked[1]], B[s]] = [B[s], A[picked[1]]]; }
+        picked = null;
+    }
+    renderTeams();
+};
+PE.$('btnToLeague').onclick = () => {
+    if (league && !confirm('지금 진행 중인 리그를 지우고 새 리그를 만들까요?')) return;
+    const rounds = roundRobin(teams.length);
+    league = {
+        teams: teams.map(t => ({ name: t.name, color: t.color, members: t.members.map(m => m.name) })),
+        matches: rounds.flatMap((g, r) => g.map(([a, b]) => ({ round: r, a, b, sa: '', sb: '' }))),
+    };
+    PE.save('eaim_pe_league_v1', league);
+    document.querySelector('[data-tab=league]').click();
+};
+PE.$('matches').oninput = (e) => {
+    const inp = e.target; if (inp.dataset.m == null) return;
+    league.matches[+inp.dataset.m][inp.dataset.side] = inp.value === '' ? '' : Math.max(0, parseInt(inp.value) || 0);
+    PE.save('eaim_pe_league_v1', league);
+    renderStandingsOnly(standings()); // 입력 칸 포커스를 지키려고 순위표만 다시 그림
+};
+function renderStandingsOnly(st) {
+    PE.$('standings').innerHTML = `<tr><th>순위</th><th>팀</th><th>경기</th><th>승</th><th>무</th><th>패</th><th>득</th><th>실</th><th>득실</th><th>승점</th></tr>` +
+        st.map((r, k) => `<tr><td>${k + 1}</td><td><span class="dot" style="background:${r.color}"></span>${PE.esc(r.name)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd > 0 ? '+' : ''}${r.gd}</td><td><b>${r.pts}</b></td></tr>`).join('');
+}
+PE.$('btnResetLeague').onclick = () => { if (confirm('리그 일정과 결과를 모두 지울까요?')) { league = null; localStorage.removeItem('eaim_pe_league_v1'); renderLeague(); } };
+PE.$('btnCsv').onclick = () => {
+    const st = standings();
+    const lines = [['순위', '팀', '팀원', '경기', '승', '무', '패', '득점', '실점', '득실', '승점'],
+        ...st.map((r, k) => [k + 1, r.name, league.teams[r.i].members.join(' '), r.p, r.w, r.d, r.l, r.gf, r.ga, r.gd, r.pts]),
+        [], ['라운드', '팀A', '점수A', '점수B', '팀B'],
+        ...league.matches.map(m => [m.round + 1, league.teams[m.a].name, m.sa, m.sb, league.teams[m.b].name])];
+    const csv = '\uFEFF' + lines.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `학급리그_${PE.today()}.csv`; a.click();
+};
+
+renderSource();
+</script>
+</body>
+</html>

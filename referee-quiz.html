@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>심판 판정 퀴즈 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .sports { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .sports button { padding: 18px 10px; font-size: 16px; }
+    .sports button .e { font-size: 34px; display: block; }
+    .q-card { background: var(--card); border-radius: 20px; padding: 22px; border: 1px solid var(--line); }
+    .whistle { font-size: 40px; }
+    .sit { font-size: clamp(18px, 2.4vw, 24px); font-weight: 700; line-height: 1.6; margin: 10px 0 18px; }
+    .opts { display: grid; gap: 10px; }
+    .opts button { text-align: left; padding: 14px 16px; font-size: 16px; background: #1e293b; border: 2px solid transparent; font-weight: 700; }
+    .opts button.right { border-color: var(--good); background: rgba(34,197,94,.15); }
+    .opts button.wrong { border-color: var(--bad); background: rgba(239,68,68,.15); }
+    .explain { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: #0b1a33; line-height: 1.7; }
+    .prog { height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+    .prog div { height: 100%; background: var(--accent); }
+    .teams-score { display: flex; gap: 10px; }
+    .teams-score button { flex: 1; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>심판 판정 퀴즈</h1><a href="index.html">← 체육 플랫폼</a></header>
+<div class="wrap stack">
+    <section id="home" class="stack">
+        <p class="muted" style="margin:0">내가 심판이라면 어떻게 판정할까요? 종목을 고르면 10문제가 나와요.</p>
+        <div class="sports" id="sports"></div>
+        <div class="card row">
+            <span class="grow">모둠 대결 모드 <span class="muted small-text">(문제마다 맞힌 모둠을 눌러 점수 기록)</span></span>
+            <select id="teamN"><option value="0">끄기</option><option value="2">2모둠</option><option value="3">3모둠</option><option value="4">4모둠</option><option value="5">5모둠</option><option value="6">6모둠</option></select>
+        </div>
+        <details class="card">
+            <summary style="cursor:pointer;font-weight:700">🧑‍🏫 선생님: 문제 추가하기</summary>
+            <div class="stack" style="margin-top:12px">
+                <select id="nSport"></select>
+                <textarea id="nSit" rows="3" placeholder="경기 상황 (예: 수비수가 슛하는 선수의 팔을 쳤다.)"></textarea>
+                <input id="nO0" placeholder="보기 1 (정답이 아니어도 돼요)" style="width:100%">
+                <input id="nO1" placeholder="보기 2" style="width:100%">
+                <input id="nO2" placeholder="보기 3" style="width:100%">
+                <input id="nO3" placeholder="보기 4" style="width:100%">
+                <label class="row"><span class="label" style="margin:0">정답 보기 번호</span><select id="nAns"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option></select></label>
+                <textarea id="nExp" rows="2" placeholder="해설"></textarea>
+                <button class="primary" id="btnAddQ">문제 저장</button>
+                <p class="muted small-text" id="customInfo" style="margin:0"></p>
+            </div>
+        </details>
+    </section>
+
+    <section id="quiz" class="hidden">
+        <div class="prog"><div id="prog"></div></div>
+        <div class="q-card">
+            <div class="row"><span class="whistle">🙋</span><span class="muted grow" id="qNo"></span><span class="chip" id="qSport"></span></div>
+            <div class="sit" id="qSit"></div>
+            <div class="opts" id="opts"></div>
+            <div class="explain hidden" id="explain"></div>
+        </div>
+        <div id="teamBox" class="hidden stack" style="margin-top:14px">
+            <p class="muted small-text" style="margin:0">맞힌 모둠을 모두 눌러 주세요 (다시 누르면 취소).</p>
+            <div class="teams-score" id="teamBtns"></div>
+        </div>
+        <div class="row" style="margin-top:14px"><button class="ghost" id="btnQuit">그만하기</button><span style="flex:1"></span><button class="primary hidden" id="btnNext">다음 문제</button></div>
+    </section>
+
+    <section id="result" class="hidden stack" style="text-align:center">
+        <div style="font-size:60px" id="rEmoji"></div>
+        <h2 id="rTitle"></h2>
+        <p class="muted" id="rMsg"></p>
+        <div class="card hidden" id="rTeams"></div>
+        <div class="row"><button class="primary grow" id="btnRetry">다시 풀기</button><button class="grow" id="btnHome">종목 고르기</button></div>
+    </section>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+const SPORTS = { basketball: ['🏀', '농구'], soccer: ['⚽', '축구'], volleyball: ['🏐', '배구'], badminton: ['🏸', '배드민턴'] };
+// [종목, 상황, 보기4, 정답번호, 해설]
+const BANK = [
+    ['basketball', '공을 잡은 채로 드리블하지 않고 세 발을 걸었다.', ['정상 플레이', '트래블링(워킹) 바이얼레이션', '더블 드리블', '개인 파울'], 1, '공을 가진 채 규정보다 많이 발을 옮기면 트래블링이에요. 상대 팀이 스로인으로 공격을 이어가요.'],
+    ['basketball', '드리블을 하다가 공을 두 손으로 잡았고, 다시 드리블을 시작했다.', ['정상 플레이', '트래블링', '더블 드리블 바이얼레이션', '3초 바이얼레이션'], 2, '드리블을 끝낸(공을 잡은) 뒤 다시 드리블하면 더블 드리블이에요.'],
+    ['basketball', '공격 팀 선수가 상대 팀 제한구역(페인트존) 안에 3초 넘게 머물렀다.', ['정상 플레이', '3초 바이얼레이션', '5초 바이얼레이션', '테크니컬 파울'], 1, '공격 팀이 공을 가지고 있을 때, 공격 선수는 상대 제한구역 안에 3초를 넘게 머물 수 없어요.'],
+    ['basketball', '3점슛을 쏘는 동작 중에 수비에게 파울을 당했고, 슛은 들어가지 않았다.', ['자유투 1개', '자유투 2개', '자유투 3개', '공격권만 준다'], 2, '슛 동작 중 파울을 당했는데 슛이 실패하면, 시도한 슛의 점수만큼 자유투를 받아요. 3점슛이면 3개예요.'],
+    ['basketball', '한 선수가 한 경기에서 개인 파울을 5개 했다.', ['경고만 받는다', '다음 쿼터만 쉰다', '5반칙 퇴장, 그 경기에 다시 뛸 수 없다', '자유투를 대신 쏜다'], 2, '국제농구연맹(FIBA) 규칙에서는 개인 파울 5개를 하면 그 경기에서 더 뛸 수 없어요.'],
+    ['basketball', '떨어지고 있는 상대의 슛을 수비가 링 위쪽에서 쳐냈다.', ['멋진 블록슛, 정상 플레이', '골텐딩, 득점 인정', '점프볼', '공격자 파울'], 1, '링보다 높은 곳에서 내려오는 슛을 건드리면 골텐딩이에요. 슛이 들어간 것으로 인정해요.'],
+    ['basketball', '드리블하던 선수의 발이 사이드라인을 밟았다.', ['선은 코트 안이므로 계속', '아웃, 상대 팀 공', '점프볼', '공격자 파울'], 1, '농구에서 경계선은 코트 밖이에요. 선을 밟으면 아웃이 돼요.'],
+    ['basketball', '공격 팀이 공을 잡은 뒤 24초 동안 슛을 쏘지 못했다(링에 닿지도 않음).', ['계속 공격', '24초 바이얼레이션, 공격권이 넘어간다', '자유투 1개', '점프볼'], 1, '공격 팀은 24초 안에 슛을 해서 링에 맞히거나 넣어야 해요.'],
+    ['soccer', '패스하는 순간, 공격수가 상대 팀 마지막 두 번째 수비수와 정확히 같은 선에 서 있었다.', ['오프사이드', '온사이드, 정상 플레이', '간접 프리킥', '경고'], 1, '수비수와 같은 선에 있으면 오프사이드가 아니에요. 더 앞(골라인 쪽)에 있어야 오프사이드 위치예요.'],
+    ['soccer', '스로인으로 던진 공을 오프사이드 위치에 있던 공격수가 받았다.', ['오프사이드', '정상 플레이', '다시 스로인', '간접 프리킥'], 1, '스로인, 골킥, 코너킥으로 직접 받은 공에는 오프사이드가 적용되지 않아요.'],
+    ['soccer', '수비수가 자기 팀 페널티 에어리어 안에서 공격수를 걸어 넘어뜨렸다.', ['간접 프리킥', '페널티킥', '코너킥', '드롭볼'], 1, '직접 프리킥에 해당하는 반칙을 자기 페널티 에어리어 안에서 하면 페널티킥이 주어져요.'],
+    ['soccer', '공의 일부가 터치라인 위에 걸쳐 있다.', ['아웃', '아직 인플레이', '스로인', '드롭볼'], 1, '공 전체가 라인을 완전히 넘어가야 아웃이에요. 조금이라도 걸쳐 있으면 경기는 계속돼요. 골도 공 전체가 골라인을 넘어야 인정돼요.'],
+    ['soccer', '한 선수가 같은 경기에서 경고(옐로카드)를 두 번 받았다.', ['경고 누적, 다음 경기부터 출전 정지', '퇴장', '페널티킥', '아무 일 없음'], 1, '한 경기에서 경고 2장을 받으면 레드카드로 퇴장이에요.'],
+    ['soccer', '공격 팀 선수가 마지막으로 공을 건드렸고, 공이 골이 아닌 상대 골라인 밖으로 나갔다.', ['코너킥', '골킥', '스로인', '드롭볼'], 1, '공격 팀이 마지막으로 건드려 상대 골라인을 넘으면 골킥, 수비 팀이 마지막이면 코너킥이에요.'],
+    ['soccer', '스로인을 하면서 한 발을 땅에서 뗀 채 공을 던졌다.', ['정상 스로인', '파울 스로, 상대 팀 스로인', '간접 프리킥', '경고'], 1, '스로인은 두 발이 땅(터치라인 위나 밖)에 닿은 채로, 두 손으로 머리 뒤에서 머리 위로 던져야 해요.'],
+    ['volleyball', '한 팀이 공을 네 번 터치해서 상대 코트로 넘겼다(블로킹 없음).', ['정상 플레이', '포 히트 반칙, 상대 득점', '네트 터치', '다시 서브'], 1, '한 팀은 공을 최대 세 번까지 터치할 수 있어요. 블로킹 터치는 이 횟수에 들어가지 않아요.'],
+    ['volleyball', '리시브한 선수가 곧바로 한 번 더 공을 쳤다(블로킹 아님).', ['정상 플레이', '연속 터치(더블 콘택트) 반칙', '포 히트', '캐치볼'], 1, '블로킹을 제외하고 같은 선수가 연속으로 두 번 공을 칠 수 없어요.'],
+    ['volleyball', '상대가 친 공이 우리 코트의 엔드라인에 닿았다.', ['아웃', '인, 상대 팀 득점', '다시 서브', '심판 재량'], 1, '배구에서는 공이 라인에 닿으면 인이에요. 라인도 코트의 일부예요.'],
+    ['volleyball', '공격하는 선수가 공을 치는 동작 중에 네트(안테나 사이)를 손으로 건드렸다.', ['정상 플레이', '네트 터치 반칙', '다시 서브', '포 히트'], 1, '공을 플레이하는 동작 중에 안테나 사이의 네트를 건드리면 반칙이에요.'],
+    ['volleyball', '1세트 점수가 24:24가 되었다.', ['25점을 먼저 내는 팀이 이긴다', '2점 차가 날 때까지 계속한다', '서브권을 가진 팀이 이긴다', '세트를 무승부로 끝낸다'], 1, '한 세트는 25점을 먼저 내되 2점 이상 앞서야 이겨요. 24:24면 2점 차가 날 때까지 계속해요. 마지막 5세트는 15점제예요.'],
+    ['badminton', '셔틀콕이 상대 코트의 라인 위에 떨어졌다.', ['아웃', '인, 친 선수의 득점', '렛(다시 하기)', '폴트'], 1, '배드민턴도 라인은 코트 안이에요. 라인에 떨어지면 인이에요.'],
+    ['badminton', '게임 점수가 20:20이 되었다.', ['21점을 먼저 내면 이긴다', '2점 차가 날 때까지 계속하고, 29:29면 30점을 먼저 내는 쪽이 이긴다', '서브권을 가진 쪽이 이긴다', '무승부'], 1, '21점 랠리포인트제에서 20:20이면 2점 차가 날 때까지 계속하고, 29:29가 되면 30점을 먼저 낸 쪽이 이겨요.'],
+    ['badminton', '랠리 중에 한 선수의 라켓이 네트에 닿았다.', ['정상 플레이', '폴트, 상대 득점', '렛', '경고'], 1, '셔틀콕이 살아 있는 동안 라켓이나 몸, 옷이 네트에 닿으면 폴트예요.'],
+    ['badminton', '단식 경기에서 서버의 점수가 짝수(0, 2, 4…)일 때 서브 위치는?', ['왼쪽 서비스 코트', '오른쪽 서비스 코트', '아무 곳이나', '중앙선 위'], 1, '단식에서 서버의 점수가 짝수면 오른쪽, 홀수면 왼쪽 서비스 코트에서 대각선으로 서브해요.'],
+    ['badminton', '서브한 셔틀콕이 대각선 방향이 아닌, 정면의 상대 서비스 코트에 떨어졌다.', ['인', '폴트', '렛', '다시 서브하되 점수 없음'], 1, '서브는 대각선 방향의 상대 서비스 코트 안에 떨어져야 해요.'],
+].map(([sport, sit, opts, ans, exp], i) => ({ id: 'b' + i, sport, sit, opts, ans, exp }));
+
+let custom = PE.load('eaim_pe_refquiz_v1', []);
+let qs = [], qi = 0, correct = 0, curSport = null, teamN = 0, teamScores = [], answered = false, curTeamHits = new Set();
+const all = () => [...BANK, ...custom];
+
+function renderHome() {
+    PE.$('sports').innerHTML = Object.entries(SPORTS).map(([k, [e, n]]) => `<button data-sport="${k}"><span class="e">${e}</span>${n}<br><span class="muted small-text">${all().filter(q => q.sport === k).length}문제</span></button>`).join('') +
+        `<button data-sport="all"><span class="e">🎲</span>전체 섞기<br><span class="muted small-text">${all().length}문제</span></button>`;
+    PE.$('nSport').innerHTML = Object.entries(SPORTS).map(([k, [, n]]) => `<option value="${k}">${n}</option>`).join('');
+    PE.$('customInfo').textContent = custom.length ? `선생님이 추가한 문제 ${custom.length}개` : '';
+}
+function startQuiz(sport) {
+    curSport = sport;
+    const pool = all().filter(q => sport === 'all' || q.sport === sport);
+    qs = pool.sort(() => Math.random() - 0.5).slice(0, 10);
+    qi = 0; correct = 0; teamN = +PE.$('teamN').value; teamScores = Array(teamN).fill(0);
+    PE.$('home').classList.add('hidden'); PE.$('result').classList.add('hidden'); PE.$('quiz').classList.remove('hidden');
+    showQ();
+}
+function showQ() {
+    const q = qs[qi]; answered = false; curTeamHits = new Set();
+    PE.$('prog').style.width = `${qi / qs.length * 100}%`;
+    PE.$('qNo').textContent = `${qi + 1} / ${qs.length}`;
+    PE.$('qSport').textContent = SPORTS[q.sport].join(' ');
+    PE.$('qSit').textContent = q.sit;
+    // 보기 순서 섞기
+    const order = q.opts.map((o, i) => i).sort(() => Math.random() - 0.5);
+    PE.$('opts').innerHTML = order.map(i => `<button data-i="${i}">${PE.esc(q.opts[i])}</button>`).join('');
+    PE.$('explain').classList.add('hidden'); PE.$('btnNext').classList.add('hidden');
+    PE.$('teamBox').classList.toggle('hidden', !teamN);
+    PE.$('teamBtns').innerHTML = Array.from({ length: teamN }, (_, i) => `<button data-t="${i}">${i + 1}모둠 <span class="muted">${teamScores[i]}</span></button>`).join('');
+}
+PE.$('opts').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b || answered) return;
+    answered = true;
+    const q = qs[qi], pick = +b.dataset.i, ok = pick === q.ans;
+    if (ok) { correct++; PE.tone(1047, 0.15, 0, 'triangle'); PE.tone(1319, 0.25, 0.12, 'triangle'); } else PE.tone(220, 0.35, 0, 'sawtooth', 0.15);
+    PE.$('opts').querySelectorAll('button').forEach(x => { const i = +x.dataset.i; if (i === q.ans) x.classList.add('right'); else if (i === pick) x.classList.add('wrong'); });
+    PE.$('explain').innerHTML = `<b style="color:${ok ? 'var(--good)' : 'var(--bad)'}">${ok ? '정답이에요!' : '아쉬워요.'}</b> ${PE.esc(q.exp)}`;
+    PE.$('explain').classList.remove('hidden');
+    PE.$('btnNext').textContent = qi + 1 < qs.length ? '다음 문제' : '결과 보기';
+    PE.$('btnNext').classList.remove('hidden');
+};
+PE.$('teamBtns').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const t = +b.dataset.t;
+    if (curTeamHits.has(t)) { curTeamHits.delete(t); teamScores[t]--; } else { curTeamHits.add(t); teamScores[t]++; }
+    b.classList.toggle('sel', curTeamHits.has(t)); b.querySelector('span').textContent = teamScores[t];
+};
+PE.$('btnNext').onclick = () => { qi++; if (qi < qs.length) showQ(); else finish(); };
+function finish() {
+    PE.$('quiz').classList.add('hidden'); PE.$('result').classList.remove('hidden');
+    const r = correct / qs.length;
+    PE.$('rEmoji').textContent = r >= 0.9 ? '🏆' : r >= 0.7 ? '🥈' : r >= 0.5 ? '👍' : '📘';
+    PE.$('rTitle').textContent = `${qs.length}문제 중 ${correct}문제 정답`;
+    PE.$('rMsg').textContent = r >= 0.9 ? '공정한 명심판이에요!' : r >= 0.7 ? '규칙을 잘 알고 있어요.' : '틀린 규칙을 다시 확인하고 한 번 더 도전해 봐요.';
+    const tb = PE.$('rTeams');
+    if (teamN) {
+        const max = Math.max(...teamScores);
+        tb.innerHTML = '<h3>모둠 대결 결과</h3>' + teamScores.map((s, i) => `<div class="row" style="justify-content:space-between;padding:6px 0"><span>${s === max && max > 0 ? '👑 ' : ''}${i + 1}모둠</span><b>${s}점</b></div>`).join('');
+        tb.classList.remove('hidden');
+    } else tb.classList.add('hidden');
+}
+PE.$('sports').onclick = (e) => { const b = e.target.closest('[data-sport]'); if (b) startQuiz(b.dataset.sport); };
+PE.$('btnRetry').onclick = () => startQuiz(curSport);
+PE.$('btnHome').onclick = () => { PE.$('result').classList.add('hidden'); PE.$('home').classList.remove('hidden'); renderHome(); };
+PE.$('btnQuit').onclick = () => { PE.$('quiz').classList.add('hidden'); PE.$('home').classList.remove('hidden'); };
+PE.$('btnAddQ').onclick = () => {
+    const opts = [0, 1, 2, 3].map(i => PE.$('nO' + i).value.trim());
+    const sit = PE.$('nSit').value.trim();
+    if (!sit || opts.some(o => !o)) { alert('상황과 보기 4개를 모두 적어 주세요.'); return; }
+    custom.push({ id: PE.uid(), sport: PE.$('nSport').value, sit, opts, ans: +PE.$('nAns').value, exp: PE.$('nExp').value.trim() || '선생님이 낸 문제예요.' });
+    PE.save('eaim_pe_refquiz_v1', custom);
+    ['nSit', 'nO0', 'nO1', 'nO2', 'nO3', 'nExp'].forEach(id => PE.$(id).value = '');
+    renderHome();
+};
+renderHome();
+</script>
+</body>
+</html>

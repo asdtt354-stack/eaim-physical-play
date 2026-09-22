@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>건강체력 자기관리 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .item-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+    .item-card .v { font-family: 'Black Han Sans', sans-serif; font-size: 26px; }
+    .item-card.sel { border-color: var(--accent); }
+    svg.chart { width: 100%; height: 220px; display: block; }
+    .log-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .log-row .d { color: var(--muted); width: 84px; flex: none; }
+    .log-row .x { margin-left: auto; }
+    .scale { display: flex; gap: 6px; flex-wrap: wrap; }
+    .scale button { min-width: 42px; padding: 9px 0; }
+    .ai-box { white-space: pre-wrap; line-height: 1.8; background: #0b1a33; border-radius: 14px; padding: 16px; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>건강체력 자기관리</h1><a href="index.html">← 체육 플랫폼</a></header>
+<div class="wrap stack">
+    <div id="profileBox" class="card stack">
+        <h2>처음 설정</h2>
+        <input id="pName" placeholder="이름" style="width:100%">
+        <div class="row">
+            <button class="sel small" data-pm="general">일반 학생 · 운동 일지</button>
+            <button class="small" data-pm="athlete">체육고 · 훈련 일지</button>
+        </div>
+        <button class="primary" id="btnProfile">시작하기</button>
+        <p class="muted small-text" style="margin:0">기록은 이 기기에만 저장돼요. 개인 휴대폰에서 쓰는 걸 추천해요.</p>
+    </div>
+
+    <div id="main" class="hidden stack">
+        <div class="row"><h2 class="grow" style="margin:0" id="hello"></h2><button class="ghost" id="btnSettings">설정</button></div>
+        <div class="tabs">
+            <button class="sel" data-tab="fit">체력 기록</button>
+            <button data-tab="log" id="tabLogBtn">운동 일지</button>
+            <button data-tab="ai">AI 코치</button>
+        </div>
+
+        <!-- 체력 기록 -->
+        <section id="tFit" class="stack">
+            <div class="grid2" id="fitCards"></div>
+            <div class="card">
+                <div class="row"><h3 class="grow" id="chartTitle" style="margin:0"></h3><label class="row" style="gap:6px"><span class="label" style="margin:0">목표</span><input type="number" step="any" id="goal" style="width:90px"></label></div>
+                <svg class="chart" id="fitChart"></svg>
+                <div id="fitHistory"></div>
+            </div>
+            <div class="card stack">
+                <h3>새 기록 넣기</h3>
+                <div class="row"><input type="date" id="fDate"><select id="fItem" class="grow"></select><input type="number" step="any" id="fVal" placeholder="기록" style="width:100px"><button class="primary" id="btnAddFit">추가</button></div>
+                <p class="muted small-text" style="margin:0">학생건강체력평가(PAPS) 종목을 기준으로 했어요. 공식 등급은 학교에서 안내하는 기준표로 확인해 주세요.</p>
+            </div>
+        </section>
+
+        <!-- 운동/훈련 일지 -->
+        <section id="tLog" class="hidden stack">
+            <div class="card">
+                <h3 id="weekTitle"></h3>
+                <svg class="chart" id="weekChart" style="height:180px"></svg>
+                <p class="muted small-text" id="weekInfo" style="margin:6px 0 0"></p>
+            </div>
+            <div class="card stack">
+                <h3 id="logFormTitle">오늘 운동 기록</h3>
+                <div class="row"><input type="date" id="lDate"><input id="lType" class="grow" placeholder="운동 종류 (예: 줄넘기, 농구, 웨이트)"><input type="number" id="lMin" placeholder="시간(분)" style="width:100px"></div>
+                <div><span class="label">힘든 정도 (1 아주 쉬움 ~ 10 최대로 힘듦)</span><div class="scale" id="rpeScale"></div></div>
+                <div id="athleteFields" class="hidden stack">
+                    <div class="row"><label><span class="label">어젯밤 수면(시간)</span><input type="number" step="0.5" id="lSleep" style="width:100px"></label></div>
+                    <div><span class="label">몸 상태 (1 나쁨 ~ 5 최상)</span><div class="scale" id="condScale"></div></div>
+                    <div><span class="label">근육 뻐근함 (1 없음 ~ 5 심함)</span><div class="scale" id="soreScale"></div></div>
+                </div>
+                <input id="lMemo" placeholder="한 줄 메모 (잘된 점, 아쉬운 점)" style="width:100%">
+                <button class="primary" id="btnAddLog">기록 저장</button>
+            </div>
+            <div class="card"><h3>최근 기록</h3><div id="logList"></div></div>
+        </section>
+
+        <!-- AI 코치 -->
+        <section id="tAi" class="hidden stack">
+            <div class="card stack">
+                <h3>최근 2주 기록으로 조언 받기</h3>
+                <p class="muted small-text" style="margin:0">체력 기록과 일지를 요약해서 Gemini에게 보내요. 이름은 보내지 않아요. 의학적 진단이 아니니, 통증이 계속되면 보건 선생님이나 병원에 알려 주세요.</p>
+                <div class="row" id="keyRow"><input type="password" id="apiKey" class="grow" placeholder="Gemini API 키 (다른 EAIM 앱과 함께 써요)"><button id="btnKey">저장</button></div>
+                <button class="primary" id="btnAi">조언 받기</button>
+            </div>
+            <div class="ai-box hidden" id="aiOut"></div>
+        </section>
+    </div>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+const ITEMS = [
+    { id: 'shuttle', name: '왕복오래달리기', unit: '회', better: 'high' },
+    { id: 'run50', name: '50m 달리기', unit: '초', better: 'low' },
+    { id: 'jump', name: '제자리멀리뛰기', unit: 'cm', better: 'high' },
+    { id: 'sitreach', name: '앉아윗몸앞으로굽히기', unit: 'cm', better: 'high' },
+    { id: 'curlup', name: '윗몸말아올리기', unit: '회', better: 'high' },
+    { id: 'pushup', name: '팔굽혀펴기', unit: '회', better: 'high' },
+    { id: 'grip', name: '악력', unit: 'kg', better: 'high' },
+];
+const STORE = 'eaim_pe_fitness_v1';
+let data = PE.load(STORE, { profile: null, fit: [], goals: {}, logs: [] });
+let pm = data.profile?.mode || 'general', selItem = 'shuttle', rpe = null, cond = null, sore = null;
+const save = () => PE.save(STORE, data);
+const isAth = () => data.profile?.mode === 'athlete';
+
+// ── 공통 차트 ──
+function lineChart(svg, pts, goal, unit) {
+    const W = 600, H = 220, pad = { l: 44, r: 16, t: 16, b: 30 };
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    if (!pts.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" fill="#94a3b8" text-anchor="middle" font-size="16">아직 기록이 없어요</text>`; return; }
+    const vals = pts.map(p => p.v).concat(goal != null && goal !== '' ? [+goal] : []);
+    let lo = Math.min(...vals), hi = Math.max(...vals); if (lo === hi) { lo -= 1; hi += 1; }
+    const padV = (hi - lo) * 0.15; lo -= padV; hi += padV;
+    const x = (i) => pts.length === 1 ? (pad.l + W - pad.r) / 2 : pad.l + i * (W - pad.l - pad.r) / (pts.length - 1);
+    const y = (v) => pad.t + (hi - v) / (hi - lo) * (H - pad.t - pad.b);
+    let s = '';
+    for (let k = 0; k <= 3; k++) { const v = lo + (hi - lo) * k / 3; s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#1e293b"/><text x="${pad.l - 6}" y="${y(v) + 4}" fill="#64748b" font-size="11" text-anchor="end">${Math.round(v * 10) / 10}</text>`; }
+    if (goal != null && goal !== '') s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(+goal)}" y2="${y(+goal)}" stroke="#22c55e" stroke-dasharray="6 6" stroke-width="2"/><text x="${W - pad.r}" y="${y(+goal) - 6}" fill="#22c55e" font-size="12" text-anchor="end">목표 ${goal}${unit}</text>`;
+    s += `<polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(' ')}" fill="none" stroke="#f97316" stroke-width="3"/>`;
+    pts.forEach((p, i) => { s += `<circle cx="${x(i)}" cy="${y(p.v)}" r="5" fill="#f97316"/><text x="${x(i)}" y="${H - 10}" fill="#64748b" font-size="11" text-anchor="middle">${p.d.slice(5)}</text>`; });
+    svg.innerHTML = s;
+}
+function barChart(svg, bars, target, label) {
+    const W = 600, H = 180, pad = { l: 36, r: 10, t: 14, b: 28 };
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const hi = Math.max(target || 0, ...bars.map(b => b.v), 1) * 1.15;
+    const bw = (W - pad.l - pad.r) / bars.length;
+    const y = (v) => pad.t + (hi - v) / hi * (H - pad.t - pad.b);
+    let s = '';
+    bars.forEach((b, i) => {
+        const x = pad.l + i * bw + bw * 0.18, w = bw * 0.64;
+        s += `<rect x="${x}" y="${y(b.v)}" width="${w}" height="${Math.max(0, H - pad.b - y(b.v))}" rx="4" fill="${b.hl ? '#f97316' : '#334155'}"/>`;
+        if (b.v) s += `<text x="${x + w / 2}" y="${y(b.v) - 4}" fill="#cbd5e1" font-size="11" text-anchor="middle">${Math.round(b.v)}</text>`;
+        s += `<text x="${x + w / 2}" y="${H - 10}" fill="#64748b" font-size="11" text-anchor="middle">${b.l}</text>`;
+    });
+    if (target) s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(target)}" y2="${y(target)}" stroke="#22c55e" stroke-dasharray="6 6" stroke-width="2"/><text x="${W - pad.r}" y="${y(target) - 5}" fill="#22c55e" font-size="11" text-anchor="end">${label}</text>`;
+    svg.innerHTML = s;
+}
+
+// ── 체력 기록 ──
+function renderFit() {
+    PE.$('fitCards').innerHTML = ITEMS.map(it => {
+        const rs = data.fit.filter(f => f.item === it.id).sort((a, b) => a.d.localeCompare(b.d));
+        const last = rs[rs.length - 1], prev = rs[rs.length - 2];
+        let trend = '';
+        if (last && prev) { const up = last.v > prev.v, better = it.better === 'high' ? up : !up; trend = last.v === prev.v ? '→' : `<span style="color:${better ? 'var(--good)' : 'var(--bad)'}">${up ? '▲' : '▼'}</span>`; }
+        return `<button class="item-card ${it.id === selItem ? 'sel' : ''}" data-item="${it.id}" style="text-align:left"><div class="muted small-text">${it.name}</div><div class="v">${last ? last.v : '–'}<span class="small-text muted"> ${it.unit}</span> ${trend}</div></button>`;
+    }).join('');
+    const it = ITEMS.find(i => i.id === selItem);
+    const rs = data.fit.filter(f => f.item === selItem).sort((a, b) => a.d.localeCompare(b.d));
+    PE.$('chartTitle').textContent = `${it.name} 변화 (${it.better === 'low' ? '낮을수록' : '높을수록'} 좋아요)`;
+    PE.$('goal').value = data.goals[selItem] ?? '';
+    lineChart(PE.$('fitChart'), rs.map(r => ({ d: r.d, v: r.v })), data.goals[selItem], it.unit);
+    PE.$('fitHistory').innerHTML = rs.slice().reverse().map(r => `<div class="log-row"><span class="d">${r.d}</span><span>${r.v}${it.unit}</span><button class="ghost x" data-delfit="${r.id}">삭제</button></div>`).join('');
+    PE.$('fItem').innerHTML = ITEMS.map(i => `<option value="${i.id}" ${i.id === selItem ? 'selected' : ''}>${i.name} (${i.unit})</option>`).join('');
+}
+
+// ── 일지 ──
+const weekStart = (d) => { const x = new Date(d + 'T00:00:00'); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); return x; };
+const fmt = (x) => new Date(x - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+function renderLog() {
+    PE.$('tabLogBtn').textContent = isAth() ? '훈련 일지' : '운동 일지';
+    PE.$('logFormTitle').textContent = isAth() ? '오늘 훈련 기록' : '오늘 운동 기록';
+    PE.$('athleteFields').classList.toggle('hidden', !isAth());
+    const ws = weekStart(PE.today());
+    if (isAth()) {
+        // 최근 8주 훈련 부하 (힘든 정도 × 분)
+        const weeks = [];
+        for (let k = 7; k >= 0; k--) {
+            const s = new Date(ws); s.setDate(s.getDate() - k * 7); const e = new Date(s); e.setDate(e.getDate() + 7);
+            const v = data.logs.filter(l => l.d >= fmt(s) && l.d < fmt(e)).reduce((a, l) => a + (l.rpe || 0) * (l.min || 0), 0);
+            weeks.push({ l: fmt(s).slice(5), v, hl: k === 0 });
+        }
+        PE.$('weekTitle').textContent = '주간 훈련 부하 (힘든 정도 × 훈련 시간)';
+        barChart(PE.$('weekChart'), weeks, 0, '');
+        const prev4 = weeks.slice(3, 7).map(w => w.v), avg4 = prev4.reduce((a, b) => a + b, 0) / 4, now = weeks[7].v;
+        const ratio = avg4 ? now / avg4 : null;
+        PE.$('weekInfo').textContent = ratio == null ? '4주 이상 기록이 쌓이면 부하 변화를 알려 드려요.'
+            : `이번 주 부하는 지난 4주 평균의 ${Math.round(ratio * 100)}%예요. ` + (ratio > 1.5 ? '평소보다 크게 늘었어요. 회복(수면, 스트레칭)에 신경 쓰고 코치 선생님과 상의해요.' : ratio < 0.7 ? '평소보다 가벼운 주예요.' : '평소와 비슷한 흐름이에요.');
+    } else {
+        const days = [];
+        for (let i = 0; i < 7; i++) { const d = new Date(ws); d.setDate(d.getDate() + i); const ds = fmt(d); days.push({ l: '월화수목금토일'[i], v: data.logs.filter(l => l.d === ds).reduce((a, l) => a + (l.min || 0), 0), hl: ds === PE.today() }); }
+        PE.$('weekTitle').textContent = '이번 주 운동 시간 (분)';
+        barChart(PE.$('weekChart'), days, 60, '하루 60분');
+        const tot = days.reduce((a, d) => a + d.v, 0), active = days.filter(d => d.v >= 60).length;
+        PE.$('weekInfo').textContent = `이번 주 총 ${tot}분 · 60분 넘게 움직인 날 ${active}일. 청소년은 하루 60분 이상 몸을 움직이는 것이 권장돼요.`;
+    }
+    PE.$('logList').innerHTML = data.logs.slice().sort((a, b) => b.d.localeCompare(a.d) || b.id.localeCompare(a.id)).slice(0, 20).map(l => `
+        <div class="log-row"><span class="d">${l.d}</span><span>${PE.esc(l.type || '운동')} · ${l.min || 0}분 · 힘듦 ${l.rpe ?? '–'}${isAth() ? ` · 수면 ${l.sleep ?? '–'}h · 컨디션 ${l.cond ?? '–'} · 뻐근함 ${l.sore ?? '–'}` : ''}${l.memo ? `<br><span class="muted">${PE.esc(l.memo)}</span>` : ''}</span><button class="ghost x" data-dellog="${l.id}">삭제</button></div>`).join('') || '<p class="muted small-text">아직 기록이 없어요.</p>';
+}
+function scale(elId, n, get, set) {
+    const el = PE.$(elId);
+    el.innerHTML = Array.from({ length: n }, (_, i) => `<button data-v="${i + 1}" class="${get() === i + 1 ? 'sel' : ''}">${i + 1}</button>`).join('');
+    el.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; set(+b.dataset.v); scale(elId, n, get, set); };
+}
+
+// ── AI ──
+async function askAI() {
+    const since = new Date(); since.setDate(since.getDate() - 14); const s = fmt(since);
+    const logs = data.logs.filter(l => l.d >= s);
+    const fitSum = ITEMS.map(it => {
+        const rs = data.fit.filter(f => f.item === it.id).sort((a, b) => a.d.localeCompare(b.d));
+        return rs.length ? `${it.name}: ${rs.slice(-3).map(r => `${r.d} ${r.v}${it.unit}`).join(', ')}${data.goals[it.id] ? ` (목표 ${data.goals[it.id]}${it.unit})` : ''}` : null;
+    }).filter(Boolean).join('\n') || '체력 기록 없음';
+    const logSum = logs.map(l => `${l.d} ${l.type || '운동'} ${l.min || 0}분 힘듦${l.rpe ?? '?'}${isAth() ? ` 수면${l.sleep ?? '?'}h 컨디션${l.cond ?? '?'}/5 뻐근함${l.sore ?? '?'}/5` : ''}${l.memo ? ` 메모:${l.memo}` : ''}`).join('\n') || '일지 없음';
+    const who = isAth() ? '체육고등학교 운동선수 학생' : '중학생';
+    const prompt = `너는 다정하고 전문적인 학교 체육 코치야. ${who}의 최근 기록을 보고 한국어로 조언해줘.
+[체력 기록]\n${fitSum}\n[최근 2주 ${isAth() ? '훈련' : '운동'} 일지]\n${logSum}
+형식: 1) 잘하고 있는 점 2문장 2) 눈여겨볼 점 2문장 3) 다음 주 실천 과제 3가지(구체적 동작·횟수·시간). ${isAth() ? '훈련 부하와 수면·컨디션의 관계도 짚어줘. ' : ''}의학적 진단은 하지 말고, 통증이 계속되면 보건 선생님이나 병원과 상의하라고 안내해. 마크다운 기호 없이 써.`;
+    PE.$('aiOut').classList.remove('hidden'); PE.$('aiOut').textContent = '기록을 읽고 있어요…';
+    try { PE.$('aiOut').textContent = await PE.gemini(prompt); }
+    catch (e) { PE.$('aiOut').textContent = e.message === 'NO_KEY' ? '먼저 Gemini API 키를 저장해 주세요.' : '조언을 받지 못했어요. 인터넷 연결과 API 키를 확인해 주세요.'; }
+}
+
+// ── 화면 · 이벤트 ──
+function showMain() {
+    PE.$('profileBox').classList.add('hidden'); PE.$('main').classList.remove('hidden');
+    PE.$('hello').textContent = `${data.profile.name || ''} ${isAth() ? '훈련 기록' : '건강 기록'}`;
+    PE.$('fDate').value = PE.today(); PE.$('lDate').value = PE.today();
+    PE.$('keyRow').classList.toggle('hidden', !!PE.geminiKey());
+    renderFit(); renderLog();
+    scale('rpeScale', 10, () => rpe, v => rpe = v);
+    scale('condScale', 5, () => cond, v => cond = v);
+    scale('soreScale', 5, () => sore, v => sore = v);
+}
+document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { pm = b.dataset.pm; document.querySelectorAll('[data-pm]').forEach(x => x.classList.toggle('sel', x === b)); });
+PE.$('btnProfile').onclick = () => { data.profile = { name: PE.$('pName').value.trim(), mode: pm }; save(); showMain(); };
+PE.$('btnSettings').onclick = () => {
+    PE.$('pName').value = data.profile.name; pm = data.profile.mode;
+    document.querySelectorAll('[data-pm]').forEach(x => x.classList.toggle('sel', x.dataset.pm === pm));
+    PE.$('main').classList.add('hidden'); PE.$('profileBox').classList.remove('hidden');
+};
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('sel', x === b));
+    PE.$('tFit').classList.toggle('hidden', b.dataset.tab !== 'fit');
+    PE.$('tLog').classList.toggle('hidden', b.dataset.tab !== 'log');
+    PE.$('tAi').classList.toggle('hidden', b.dataset.tab !== 'ai');
+});
+PE.$('fitCards').onclick = (e) => { const b = e.target.closest('[data-item]'); if (b) { selItem = b.dataset.item; renderFit(); } };
+PE.$('fitHistory').onclick = (e) => { const b = e.target.closest('[data-delfit]'); if (b && confirm('이 기록을 지울까요?')) { data.fit = data.fit.filter(f => f.id !== b.dataset.delfit); save(); renderFit(); } };
+PE.$('goal').onchange = () => { const v = PE.$('goal').value; if (v === '') delete data.goals[selItem]; else data.goals[selItem] = +v; save(); renderFit(); };
+PE.$('btnAddFit').onclick = () => {
+    const v = parseFloat(PE.$('fVal').value); if (isNaN(v)) { PE.$('fVal').focus(); return; }
+    selItem = PE.$('fItem').value;
+    data.fit.push({ id: PE.uid(), d: PE.$('fDate').value || PE.today(), item: selItem, v }); save();
+    PE.$('fVal').value = ''; renderFit();
+};
+PE.$('btnAddLog').onclick = () => {
+    const min = parseInt(PE.$('lMin').value);
+    if (!min) { PE.$('lMin').focus(); alert('운동 시간을 분 단위로 적어 주세요.'); return; }
+    const l = { id: PE.uid(), d: PE.$('lDate').value || PE.today(), type: PE.$('lType').value.trim(), min, rpe, memo: PE.$('lMemo').value.trim() };
+    if (isAth()) Object.assign(l, { sleep: parseFloat(PE.$('lSleep').value) || null, cond, sore });
+    data.logs.push(l); save();
+    ['lType', 'lMin', 'lMemo', 'lSleep'].forEach(id => PE.$(id).value = ''); rpe = cond = sore = null;
+    showMain(); document.querySelector('[data-tab=log]').click();
+};
+PE.$('logList').onclick = (e) => { const b = e.target.closest('[data-dellog]'); if (b && confirm('이 기록을 지울까요?')) { data.logs = data.logs.filter(l => l.id !== b.dataset.dellog); save(); renderLog(); } };
+PE.$('btnKey').onclick = () => { const k = PE.$('apiKey').value.trim(); if (!k) return; localStorage.setItem('eaim_gemini_key', k); PE.$('keyRow').classList.add('hidden'); };
+PE.$('btnAi').onclick = askAI;
+
+if (data.profile) showMain();
+</script>
+</body>
+</html>

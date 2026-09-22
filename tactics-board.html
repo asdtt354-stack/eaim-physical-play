@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>전술 보드 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .board-wrap { background: #0b1220; border-radius: 16px; padding: 8px; }
+    svg#board { width: 100%; display: block; touch-action: none; user-select: none; border-radius: 10px; }
+    .tok { cursor: grab; }
+    .tok text { font: 900 22px 'Noto Sans KR'; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+    .scenes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .scenes button { min-width: 44px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    #fullBox:fullscreen { background: #0b1220; padding: 12px; display: flex; flex-direction: column; justify-content: center; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>전술 보드</h1><a href="index.html">← 체육 플랫폼</a></header>
+<div class="wrap wide stack">
+    <div class="row">
+        <div class="tabs"><button class="sel" data-court="basketball">농구</button><button data-court="soccer">축구</button><button data-court="handball">핸드볼·풋살</button></div>
+        <label class="row" style="gap:6px"><span class="label" style="margin:0">팀당 인원</span><select id="count"></select></label>
+        <span style="flex:1"></span>
+        <select id="playList"><option value="">저장된 작전</option></select>
+    </div>
+
+    <div id="fullBox">
+        <div class="toolbar">
+            <button class="small sel" id="tMove">움직이기</button>
+            <button class="small" id="tPen">펜</button>
+            <button class="small" id="tArrow">화살표</button>
+            <button class="small" id="btnUndoDraw">그림 되돌리기</button>
+            <span style="flex:1"></span>
+            <button class="small primary" id="btnPlay">▶ 작전 재생</button>
+            <button class="small" id="btnFull">전체 화면</button>
+        </div>
+        <div class="board-wrap"><svg id="board"></svg></div>
+        <div class="toolbar">
+            <span class="label" style="margin:0">장면</span>
+            <div class="scenes" id="scenes"></div>
+            <button class="small" id="btnAddScene">+ 지금 모습을 다음 장면으로</button>
+            <button class="small" id="btnDelScene">이 장면 삭제</button>
+        </div>
+    </div>
+
+    <div class="card row">
+        <input id="playName" class="grow" placeholder="작전 이름 (예: 2모둠 속공 패턴)">
+        <button id="btnSave">작전 저장</button>
+        <button class="ghost" id="btnDeletePlay">저장된 작전 삭제</button>
+    </div>
+    <p class="muted small-text">선수를 끌어 위치를 잡고 "다음 장면"을 추가하는 식으로 움직임을 만들어요. 재생하면 장면 사이를 부드럽게 이어 보여줘요. 펜과 화살표는 장면마다 따로 그려져요.</p>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg', svg = PE.$('board');
+const COURTS = {
+    basketball: { w: 1000, h: 536, color: '#b45309', max: 5, def: 5, m: 1000 / 28 },
+    soccer: { w: 1000, h: 648, color: '#15803d', max: 11, def: 7, m: 1000 / 105 },
+    handball: { w: 1000, h: 500, color: '#1d4ed8', max: 7, def: 5, m: 1000 / 40 },
+};
+let court = 'basketball', count = 5, scenes = [], cur = 0, tool = 'move', dragTok = null, drawing = null, playing = false;
+let plays = PE.load('eaim_pe_tactics_v1', []);
+
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+
+// ── 코트 그리기 ──
+function drawCourt(g) {
+    const C = COURTS[court], W = C.w, H = C.h, m = C.m, line = { stroke: '#fff', 'stroke-width': 3, fill: 'none', opacity: .85 };
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: C.color }, g);
+    el('rect', { x: 4, y: 4, width: W - 8, height: H - 8, ...line }, g);
+    el('line', { x1: W / 2, y1: 4, x2: W / 2, y2: H - 4, ...line }, g);
+    if (court === 'basketball') {
+        el('circle', { cx: W / 2, cy: H / 2, r: 1.8 * m, ...line }, g);
+        for (const side of [0, 1]) {
+            const bx = side ? W - 1.575 * m : 1.575 * m, dir = side ? -1 : 1, x0 = side ? W - 4 : 4;
+            const keyW = 5.8 * m, keyH = 4.9 * m;
+            el('rect', { x: side ? W - 4 - keyW : 4, y: H / 2 - keyH / 2, width: keyW, height: keyH, ...line }, g);
+            el('circle', { cx: x0 + dir * keyW, cy: H / 2, r: 1.8 * m, ...line }, g);
+            const r3 = 6.75 * m, yEdge = 0.9 * m, dy = H / 2 - yEdge, dx = Math.sqrt(r3 * r3 - dy * dy);
+            el('path', { d: `M ${x0} ${yEdge} L ${bx + dir * dx} ${yEdge} A ${r3} ${r3} 0 0 ${side ? 0 : 1} ${bx + dir * dx} ${H - yEdge} L ${x0} ${H - yEdge}`, ...line }, g);
+            el('circle', { cx: bx, cy: H / 2, r: 0.23 * m, ...line, stroke: '#f97316', 'stroke-width': 4 }, g);
+            el('line', { x1: x0 + dir * 1.2 * m, y1: H / 2 - 0.9 * m, x2: x0 + dir * 1.2 * m, y2: H / 2 + 0.9 * m, ...line, 'stroke-width': 5 }, g);
+        }
+    } else if (court === 'soccer') {
+        el('circle', { cx: W / 2, cy: H / 2, r: 9.15 * m, ...line }, g);
+        el('circle', { cx: W / 2, cy: H / 2, r: 4, fill: '#fff' }, g);
+        for (const side of [0, 1]) {
+            const x0 = side ? W - 4 : 4, dir = side ? -1 : 1;
+            el('rect', { x: side ? W - 4 - 16.5 * m : 4, y: H / 2 - 20.15 * m, width: 16.5 * m, height: 40.3 * m, ...line }, g);
+            el('rect', { x: side ? W - 4 - 5.5 * m : 4, y: H / 2 - 9.15 * m, width: 5.5 * m, height: 18.3 * m, ...line }, g);
+            el('circle', { cx: x0 + dir * 11 * m, cy: H / 2, r: 4, fill: '#fff' }, g);
+            el('rect', { x: side ? W - 4 : 4 - 12, y: H / 2 - 3.66 * m, width: 12, height: 7.32 * m, fill: '#fff', opacity: .6 }, g);
+        }
+    } else {
+        el('circle', { cx: W / 2, cy: H / 2, r: 3 * m, ...line, opacity: .4 }, g);
+        for (const side of [0, 1]) {
+            const x0 = side ? W - 4 : 4, s = side ? 0 : 1;
+            for (const r of [6, 9]) {
+                el('path', { d: `M ${x0} ${H / 2 - 1.5 * m - r * m} A ${r * m} ${r * m} 0 0 ${s} ${x0 + (side ? -1 : 1) * r * m} ${H / 2 - 1.5 * m} L ${x0 + (side ? -1 : 1) * r * m} ${H / 2 + 1.5 * m} A ${r * m} ${r * m} 0 0 ${s} ${x0} ${H / 2 + 1.5 * m + r * m}`, ...line, 'stroke-dasharray': r === 9 ? '12 10' : '' }, g);
+            }
+            el('rect', { x: side ? W - 4 : 4 - 12, y: H / 2 - 1.5 * m, width: 12, height: 3 * m, fill: '#fff', opacity: .6 }, g);
+        }
+    }
+}
+
+// ── 선수 초기 배치 ──
+function defaultTokens() {
+    const C = COURTS[court], W = C.w, H = C.h, toks = [];
+    for (let t = 0; t < 2; t++) for (let i = 0; i < count; i++) {
+        const col = Math.floor(i / 3), row = i % 3, rows = Math.min(3, count - col * 3);
+        const x = t === 0 ? W * 0.12 + col * W * 0.11 : W * 0.88 - col * W * 0.11;
+        const y = H * (row + 1) / (rows + 1);
+        toks.push({ id: `${t ? 'B' : 'A'}${i + 1}`, team: t, label: String(i + 1), x, y });
+    }
+    toks.push({ id: 'ball', team: 2, label: '', x: W / 2, y: H / 2 });
+    return toks;
+}
+const newScene = (toks) => ({ toks: toks.map(t => ({ ...t })), draws: [] });
+
+// ── 렌더 ──
+function render(toks = scenes[cur].toks, draws = scenes[cur].draws) {
+    const C = COURTS[court];
+    svg.setAttribute('viewBox', `0 0 ${C.w} ${C.h}`);
+    svg.innerHTML = '';
+    const defs = el('defs', {}, svg);
+    const mk = el('marker', { id: 'ah', viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#fde047' }, mk);
+    drawCourt(el('g', {}, svg));
+    // 이전 장면 → 지금 장면 이동 경로
+    if (cur > 0 && !playing) {
+        const prev = scenes[cur - 1].toks;
+        for (const t of toks) { const p = prev.find(x => x.id === t.id); if (p && Math.hypot(p.x - t.x, p.y - t.y) > 5) el('line', { x1: p.x, y1: p.y, x2: t.x, y2: t.y, stroke: 'rgba(255,255,255,.45)', 'stroke-width': 3, 'stroke-dasharray': '8 8' }, svg); }
+    }
+    for (const d of draws) {
+        if (d.type === 'pen') el('polyline', { points: d.pts.map(p => p.join(',')).join(' '), stroke: '#fde047', 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
+        else el('line', { x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, stroke: '#fde047', 'stroke-width': 5, 'marker-end': 'url(#ah)' }, svg);
+    }
+    const r = court === 'soccer' ? 17 : 20;
+    for (const t of toks) {
+        const g = el('g', { class: 'tok', 'data-id': t.id, transform: `translate(${t.x},${t.y})` }, svg);
+        if (t.team === 2) { el('circle', { r: r * 0.6, fill: '#fff', stroke: '#111', 'stroke-width': 3 }, g); }
+        else { el('circle', { r, fill: t.team ? '#2563eb' : '#e11d48', stroke: '#fff', 'stroke-width': 3 }, g); el('text', {}, g).textContent = t.label; }
+    }
+    renderScenes();
+}
+function renderScenes() {
+    PE.$('scenes').innerHTML = scenes.map((_, i) => `<button class="small ${i === cur ? 'sel' : ''}" data-s="${i}">${i + 1}</button>`).join('');
+}
+
+// ── 포인터 ──
+const svgPt = (e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const q = p.matrixTransform(svg.getScreenCTM().inverse()); return [Math.round(q.x), Math.round(q.y)]; };
+svg.addEventListener('pointerdown', (e) => {
+    if (playing) return;
+    const [x, y] = svgPt(e);
+    if (tool === 'move') {
+        const g = e.target.closest('.tok'); if (!g) return;
+        dragTok = scenes[cur].toks.find(t => t.id === g.dataset.id);
+    } else if (tool === 'pen') { drawing = { type: 'pen', pts: [[x, y]] }; scenes[cur].draws.push(drawing); }
+    else { drawing = { type: 'arrow', x1: x, y1: y, x2: x, y2: y }; scenes[cur].draws.push(drawing); }
+    svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove', (e) => {
+    if (!dragTok && !drawing) return;
+    const C = COURTS[court], [x, y] = svgPt(e);
+    if (dragTok) { dragTok.x = Math.max(0, Math.min(C.w, x)); dragTok.y = Math.max(0, Math.min(C.h, y)); }
+    else if (drawing.type === 'pen') drawing.pts.push([x, y]);
+    else { drawing.x2 = x; drawing.y2 = y; }
+    render();
+});
+svg.addEventListener('pointerup', () => {
+    if (drawing && drawing.type === 'arrow' && Math.hypot(drawing.x2 - drawing.x1, drawing.y2 - drawing.y1) < 15) scenes[cur].draws.pop();
+    dragTok = null; drawing = null; render();
+});
+
+// ── 재생 ──
+function play() {
+    if (scenes.length < 2) { alert('장면을 2개 이상 만들어 주세요. 선수를 옮긴 뒤 "+ 지금 모습을 다음 장면으로"를 누르면 돼요.'); return; }
+    playing = true; PE.$('btnPlay').textContent = '재생 중…';
+    const SEG = 1200, t0 = performance.now();
+    const ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const frame = (now) => {
+        const el = (now - t0) / SEG, i = Math.floor(el), f = ease(el - i);
+        if (i >= scenes.length - 1) { playing = false; cur = scenes.length - 1; PE.$('btnPlay').textContent = '▶ 작전 재생'; render(); return; }
+        const A = scenes[i].toks, B = scenes[i + 1].toks;
+        const toks = B.map(b => { const a = A.find(x => x.id === b.id) || b; return { ...b, x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f }; });
+        cur = i; render(toks, f < 0.5 ? scenes[i].draws : scenes[i + 1].draws);
+        requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+}
+
+// ── 설정 · 저장 ──
+function setCourt(c, keepScenes) {
+    court = c;
+    const C = COURTS[c];
+    PE.$('count').innerHTML = Array.from({ length: C.max - 2 }, (_, i) => i + 3).map(n => `<option ${n === count ? 'selected' : ''}>${n}</option>`).join('');
+    if (count > C.max) count = C.def;
+    if (!keepScenes) { count = Math.min(count, C.max); PE.$('count').value = count; scenes = [newScene(defaultTokens())]; cur = 0; }
+    document.querySelectorAll('[data-court]').forEach(b => b.classList.toggle('sel', b.dataset.court === c));
+    render();
+}
+function renderPlays() { PE.$('playList').innerHTML = '<option value="">저장된 작전 불러오기</option>' + plays.map((p, i) => `<option value="${i}">${PE.esc(p.name)}</option>`).join(''); }
+document.querySelectorAll('[data-court]').forEach(b => b.onclick = () => { if (scenes.length > 1 && !confirm('코트를 바꾸면 지금 작전이 지워져요. 바꿀까요?')) return; count = COURTS[b.dataset.court].def; setCourt(b.dataset.court); });
+PE.$('count').onchange = () => { if (scenes.length > 1 && !confirm('인원을 바꾸면 장면이 처음부터 시작돼요. 바꿀까요?')) { PE.$('count').value = count; return; } count = +PE.$('count').value; scenes = [newScene(defaultTokens())]; cur = 0; render(); };
+const setTool = (t) => { tool = t; ['tMove', 'tPen', 'tArrow'].forEach(id => PE.$(id).classList.toggle('sel', id === { move: 'tMove', pen: 'tPen', arrow: 'tArrow' }[t])); };
+PE.$('tMove').onclick = () => setTool('move');
+PE.$('tPen').onclick = () => setTool('pen');
+PE.$('tArrow').onclick = () => setTool('arrow');
+PE.$('btnUndoDraw').onclick = () => { scenes[cur].draws.pop(); render(); };
+PE.$('btnAddScene').onclick = () => { scenes.splice(cur + 1, 0, newScene(scenes[cur].toks)); cur++; render(); };
+PE.$('btnDelScene').onclick = () => { if (scenes.length === 1) { scenes = [newScene(defaultTokens())]; } else { scenes.splice(cur, 1); cur = Math.max(0, cur - 1); } render(); };
+PE.$('scenes').onclick = (e) => { const b = e.target.closest('[data-s]'); if (b && !playing) { cur = +b.dataset.s; render(); } };
+PE.$('btnPlay').onclick = () => { if (!playing) play(); };
+PE.$('btnFull').onclick = () => PE.fullscreen(PE.$('fullBox'));
+PE.$('btnSave').onclick = () => {
+    const name = PE.$('playName').value.trim() || `작전 ${plays.length + 1}`;
+    const item = { name, court, count, scenes };
+    const i = plays.findIndex(p => p.name === name);
+    if (i >= 0) plays[i] = item; else plays.push(item);
+    PE.save('eaim_pe_tactics_v1', plays); renderPlays(); PE.$('playName').value = name;
+    alert(`'${name}' 저장했어요.`);
+};
+PE.$('playList').onchange = () => {
+    const p = plays[+PE.$('playList').value]; if (!p) return;
+    count = p.count; setCourt(p.court, true); scenes = JSON.parse(JSON.stringify(p.scenes)); cur = 0; PE.$('playName').value = p.name; render();
+};
+PE.$('btnDeletePlay').onclick = () => {
+    const i = +PE.$('playList').value;
+    if (PE.$('playList').value === '') { alert('위의 목록에서 지울 작전을 먼저 선택해 주세요.'); return; }
+    if (confirm(`'${plays[i].name}'을(를) 삭제할까요?`)) { plays.splice(i, 1); PE.save('eaim_pe_tactics_v1', plays); renderPlays(); }
+};
+setCourt('basketball'); renderPlays();
+</script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>동작 분석 슬로우 캠 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .stage { position: relative; background: #000; border-radius: 16px; overflow: hidden; }
+    .stage canvas { width: 100%; display: block; max-height: 72vh; object-fit: contain; touch-action: none; }
+    .rec-dot { position: absolute; top: 12px; left: 12px; background: var(--bad); color: #fff; font-weight: 900; padding: 4px 12px; border-radius: 999px; font-size: 14px; }
+    .ctrl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .ctrl button { padding: 9px 13px; }
+    #seek { width: 100%; margin-top: 10px; }
+    .strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .shot { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+    .shot img { width: 100%; display: block; }
+    .shot div { padding: 6px 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .toggle.sel { background: var(--blue); }
+</style>
+</head>
+<body>
+<header class="bar"><h1>동작 분석 슬로우 캠</h1><a href="index.html">← 체육 플랫폼</a></header>
+<div class="wrap wide stack">
+    <div id="srcBox" class="card stack">
+        <h2>영상 준비</h2>
+        <p class="muted small-text" style="margin:0">친구의 슛, 멀리뛰기, 스윙 동작을 옆에서 찍거나 저장된 영상을 불러와요. 영상은 이 기기 안에서만 처리돼요.</p>
+        <div class="row">
+            <button class="primary" id="btnCamBack">후면 카메라로 촬영</button>
+            <button id="btnCamFront">전면 카메라로 촬영</button>
+            <label class="chip" style="cursor:pointer;padding:11px 16px;font-weight:700">영상 파일 불러오기<input type="file" id="file" accept="video/*" class="hidden"></label>
+        </div>
+        <p class="muted small-text" id="status" style="margin:0"></p>
+    </div>
+
+    <div id="stageBox" class="hidden">
+        <div class="stage">
+            <canvas id="cv"></canvas>
+            <div class="rec-dot hidden" id="recDot">● 녹화 중</div>
+        </div>
+
+        <div id="camCtrl" class="ctrl hidden">
+            <button class="primary" id="btnRec">녹화 시작</button>
+            <span class="muted small-text">전신이 보이게 옆에서 찍어 주세요. 최대 15초까지 녹화돼요.</span>
+            <button class="ghost" id="btnCancelCam">취소</button>
+        </div>
+
+        <div id="playCtrl" class="hidden">
+            <input type="range" id="seek" min="0" max="1000" value="0">
+            <div class="ctrl">
+                <button id="btnBack" title="한 프레임 뒤로">◀ 1프레임</button>
+                <button class="primary" id="btnPlay">▶ 재생</button>
+                <button id="btnFwd" title="한 프레임 앞으로">1프레임 ▶</button>
+                <span class="muted small-text" id="timeLbl">0.00초</span>
+                <span style="flex:1"></span>
+                <button class="small" data-rate="0.25">0.25배</button>
+                <button class="small sel" data-rate="0.5">0.5배</button>
+                <button class="small" data-rate="1">1배</button>
+            </div>
+            <div class="ctrl">
+                <button class="toggle sel small" id="tSkel">뼈대</button>
+                <button class="toggle sel small" id="tAngle">관절 각도</button>
+                <button class="toggle small" id="tLine">선 긋기</button>
+                <button class="small" id="btnClearLines">선 지우기</button>
+                <span style="flex:1"></span>
+                <button class="small primary" id="btnShot">이 장면 캡처</button>
+                <button class="small" id="btnNew">새 영상</button>
+            </div>
+            <p class="muted small-text" id="poseStatus"></p>
+        </div>
+    </div>
+
+    <div id="shotBox" class="hidden">
+        <h2>캡처한 장면 비교</h2>
+        <p class="muted small-text">준비 → 도약 → 마무리처럼 핵심 순간을 캡처해서 각도를 비교해 보세요.</p>
+        <div class="strip" id="strip"></div>
+    </div>
+</div>
+
+<video id="cam" playsinline muted class="hidden"></video>
+<video id="vid" playsinline muted class="hidden"></video>
+
+<script src="pe-common.js"></script>
+<script type="module">
+import { initPose, detect, BONES, angle, cameraErrorText } from './pose-core.js';
+
+const cv = PE.$('cv'), ctx = cv.getContext('2d'), cam = PE.$('cam'), vid = PE.$('vid');
+let mode = 'idle', recorder = null, chunks = [], stream = null, recTimer = null;
+let showSkel = true, showAngle = true, lineMode = false, lines = [], drag = null, P = null, lastDetT = -1, poseReady = false;
+
+const ANGLES = [
+    { j: 'le', pts: ['ls','le','lw'], name: '왼팔꿈치' }, { j: 're', pts: ['rs','re','rw'], name: '오른팔꿈치' },
+    { j: 'ls', pts: ['lh','ls','le'], name: '왼어깨' }, { j: 'rs', pts: ['rh','rs','re'], name: '오른어깨' },
+    { j: 'lh', pts: ['ls','lh','lk'], name: '왼골반' }, { j: 'rh', pts: ['rs','rh','rk'], name: '오른골반' },
+    { j: 'lk', pts: ['lh','lk','la'], name: '왼무릎' }, { j: 'rk', pts: ['rh','rk','ra'], name: '오른무릎' },
+];
+const vis = (k) => P && P[k] && P[k].v >= 0.5;
+
+async function loadPose() {
+    if (poseReady) return;
+    PE.$('poseStatus').textContent = '자세 인식 모델을 불러오는 중…';
+    try { await initPose({ numPoses: 1 }); poseReady = true; PE.$('poseStatus').textContent = ''; }
+    catch (e) { PE.$('poseStatus').textContent = '자세 인식을 불러오지 못했어요. 영상 재생과 선 긋기는 그대로 쓸 수 있어요.'; }
+}
+
+// ── 촬영 ──
+async function openCam(facing) {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } }, audio: false });
+    } catch (e) { PE.$('status').textContent = cameraErrorText(e); return; }
+    cam.srcObject = stream; await cam.play();
+    cv.width = cam.videoWidth; cv.height = cam.videoHeight;
+    mode = 'cam'; showUI();
+}
+function startRec() {
+    const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+    if (!type) { alert('이 브라우저는 녹화를 지원하지 않아요. 휴대폰 카메라로 찍은 뒤 "영상 파일 불러오기"를 써 주세요.'); return; }
+    chunks = []; recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 6e6 });
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstop = () => { stopStream(); loadVideo(URL.createObjectURL(new Blob(chunks, { type }))); };
+    recorder.start(); PE.$('recDot').classList.remove('hidden'); PE.$('btnRec').textContent = '녹화 멈추기';
+    recTimer = setTimeout(stopRec, 15000);
+}
+function stopRec() { clearTimeout(recTimer); if (recorder && recorder.state === 'recording') recorder.stop(); PE.$('recDot').classList.add('hidden'); PE.$('btnRec').textContent = '녹화 시작'; }
+function stopStream() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; cam.srcObject = null; }
+
+// ── 재생 ──
+function loadVideo(url) {
+    vid.src = url; vid.playbackRate = 0.5; lines = []; P = null; lastDetT = -1;
+    vid.onloadedmetadata = () => {
+        cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+        if (vid.duration === Infinity) { // 녹화 영상 길이 오류 보정
+            vid.currentTime = 1e101;
+            vid.ontimeupdate = () => { vid.ontimeupdate = null; vid.currentTime = 0; };
+        }
+        mode = 'play'; showUI(); loadPose();
+    };
+}
+const dur = () => isFinite(vid.duration) ? vid.duration : 0;
+function step(d) { vid.pause(); vid.currentTime = Math.max(0, Math.min(dur(), vid.currentTime + d)); }
+
+function showUI() {
+    PE.$('srcBox').classList.toggle('hidden', mode !== 'idle');
+    PE.$('stageBox').classList.toggle('hidden', mode === 'idle');
+    PE.$('camCtrl').classList.toggle('hidden', mode !== 'cam');
+    PE.$('playCtrl').classList.toggle('hidden', mode !== 'play');
+}
+
+// ── 그리기 ──
+function draw() {
+    const W = cv.width, H = cv.height;
+    if (mode === 'cam' && cam.readyState >= 2) ctx.drawImage(cam, 0, 0, W, H);
+    if (mode === 'play' && vid.readyState >= 2) {
+        ctx.drawImage(vid, 0, 0, W, H);
+        if (poseReady && (showSkel || showAngle) && vid.currentTime !== lastDetT) {
+            lastDetT = vid.currentTime;
+            const people = detect(vid, cv, performance.now());
+            P = people[0] || null;
+            PE.$('poseStatus').textContent = P ? '' : '이 장면에서는 사람을 찾지 못했어요.';
+        }
+        const lw = Math.max(3, W / 250);
+        if (P && showSkel) {
+            ctx.lineCap = 'round'; ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.9)';
+            for (const [a, b] of BONES) { if (!vis(a) || !vis(b)) continue; ctx.beginPath(); ctx.moveTo(P[a].x, P[a].y); ctx.lineTo(P[b].x, P[b].y); ctx.stroke(); }
+            ctx.fillStyle = '#f97316';
+            for (const k of Object.keys(P)) if (k !== 'nose' && vis(k)) { ctx.beginPath(); ctx.arc(P[k].x, P[k].y, lw * 1.8, 0, Math.PI * 2); ctx.fill(); }
+        }
+        if (P && showAngle) {
+            ctx.font = `900 ${Math.max(14, W / 55)}px 'Noto Sans KR'`;
+            for (const a of ANGLES) {
+                if (!a.pts.every(vis)) continue;
+                const deg = Math.round(angle(P[a.pts[0]], P[a.pts[1]], P[a.pts[2]]));
+                const x = P[a.j].x + W / 90, y = P[a.j].y - W / 90, txt = `${deg}°`;
+                const tw = ctx.measureText(txt).width;
+                ctx.fillStyle = 'rgba(2,6,23,.75)'; ctx.fillRect(x - 4, y - W / 55, tw + 8, W / 55 + 8);
+                ctx.fillStyle = '#fde047'; ctx.fillText(txt, x, y);
+            }
+        }
+        PE.$('timeLbl').textContent = `${vid.currentTime.toFixed(2)}초`;
+        if (dur()) PE.$('seek').value = Math.round(vid.currentTime / dur() * 1000);
+        PE.$('btnPlay').textContent = vid.paused ? '▶ 재생' : '⏸ 멈춤';
+    }
+    // 선 (수평 기준 각도 표시)
+    const all = drag ? [...lines, drag] : lines;
+    ctx.lineWidth = Math.max(3, W / 300); ctx.strokeStyle = '#38bdf8'; ctx.fillStyle = '#38bdf8';
+    ctx.font = `900 ${Math.max(14, W / 60)}px 'Noto Sans KR'`;
+    for (const l of all) {
+        const x1 = l.x1 * W, y1 = l.y1 * H, x2 = l.x2 * W, y2 = l.y2 * H;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        let deg = Math.abs(Math.atan2(-(y2 - y1), x2 - x1) * 180 / Math.PI); if (deg > 90) deg = 180 - deg;
+        ctx.fillText(`${Math.round(deg)}°`, (x1 + x2) / 2 + 8, (y1 + y2) / 2 - 8);
+    }
+    requestAnimationFrame(draw);
+}
+
+// ── 선 긋기 ──
+const toNorm = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
+cv.addEventListener('pointerdown', (e) => { if (!lineMode || mode !== 'play') return; const p = toNorm(e); drag = { x1: p.x, y1: p.y, x2: p.x, y2: p.y }; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', (e) => { if (!drag) return; const p = toNorm(e); drag.x2 = p.x; drag.y2 = p.y; });
+cv.addEventListener('pointerup', () => { if (drag && Math.hypot(drag.x2 - drag.x1, drag.y2 - drag.y1) > 0.02) lines.push(drag); drag = null; });
+
+// ── 캡처 ──
+PE.$('btnShot').onclick = () => {
+    vid.pause();
+    const t = document.createElement('canvas'); t.width = 480; t.height = Math.round(480 * cv.height / cv.width);
+    t.getContext('2d').drawImage(cv, 0, 0, t.width, t.height);
+    const info = P ? ANGLES.filter(a => a.pts.every(vis)).map(a => `${a.name} ${Math.round(angle(P[a.pts[0]], P[a.pts[1]], P[a.pts[2]]))}°`).join(' · ') : '각도 정보 없음';
+    const div = document.createElement('div'); div.className = 'shot';
+    div.innerHTML = `<img src="${t.toDataURL('image/jpeg', 0.8)}" alt="${vid.currentTime.toFixed(2)}초 장면"><div><b style="color:var(--text)">${vid.currentTime.toFixed(2)}초</b><br>${info}</div>`;
+    PE.$('strip').appendChild(div); PE.$('shotBox').classList.remove('hidden');
+};
+
+// ── 버튼 ──
+PE.$('btnCamBack').onclick = () => openCam('environment');
+PE.$('btnCamFront').onclick = () => openCam('user');
+PE.$('file').onchange = (e) => { const f = e.target.files[0]; if (f) loadVideo(URL.createObjectURL(f)); e.target.value = ''; };
+PE.$('btnRec').onclick = () => recorder && recorder.state === 'recording' ? stopRec() : startRec();
+PE.$('btnCancelCam').onclick = () => { stopRec(); stopStream(); mode = 'idle'; showUI(); };
+PE.$('btnPlay').onclick = () => vid.paused ? vid.play() : vid.pause();
+PE.$('btnBack').onclick = () => step(-1 / 30);
+PE.$('btnFwd').onclick = () => step(1 / 30);
+PE.$('seek').oninput = () => { vid.pause(); if (dur()) vid.currentTime = PE.$('seek').value / 1000 * dur(); };
+document.querySelectorAll('[data-rate]').forEach(b => b.onclick = () => { vid.playbackRate = +b.dataset.rate; document.querySelectorAll('[data-rate]').forEach(x => x.classList.toggle('sel', x === b)); });
+const tog = (id, fn) => PE.$(id).onclick = () => { const on = fn(); PE.$(id).classList.toggle('sel', on); lastDetT = -1; };
+tog('tSkel', () => (showSkel = !showSkel));
+tog('tAngle', () => (showAngle = !showAngle));
+tog('tLine', () => { lineMode = !lineMode; if (lineMode) vid.pause(); return lineMode; });
+PE.$('btnClearLines').onclick = () => { lines = []; };
+PE.$('btnNew').onclick = () => { vid.pause(); vid.removeAttribute('src'); mode = 'idle'; showUI(); };
+window.addEventListener('keydown', (e) => {
+    if (mode !== 'play') return;
+    if (e.key === 'ArrowLeft') step(-1 / 30);
+    if (e.key === 'ArrowRight') step(1 / 30);
+    if (e.code === 'Space') { e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
+});
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

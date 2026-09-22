@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EAIM 체육교과 플랫폼</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .hero { padding: 48px 20px 28px; max-width: 1100px; margin: 0 auto; }
+    .hero .eyebrow { color: var(--accent); font-weight: 900; font-size: 15px; }
+    .hero h1 { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: clamp(38px, 7vw, 76px); line-height: 1.05; margin: 8px 0 14px; }
+    .hero p { color: var(--muted); max-width: 620px; line-height: 1.8; margin: 0; }
+    .court-line { height: 6px; margin-top: 26px; background: linear-gradient(90deg, var(--accent) 0 18%, transparent 18% 20%, #38bdf8 20% 38%, transparent 38% 40%, #22c55e 40% 58%, transparent 58% 60%, #a855f7 60% 78%, transparent 78% 80%, #eab308 80%); border-radius: 3px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 0 20px 80px; }
+    section { margin-top: 38px; }
+    section > h2 { font-size: 26px; margin: 0 0 4px; }
+    section > p { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 12px; }
+    a.app { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; border-left: 5px solid var(--c); transition: transform .15s, border-color .15s; }
+    a.app:hover, a.app:focus-visible { transform: translateY(-2px); border-color: var(--c); }
+    a.app .top { display: flex; align-items: center; gap: 10px; }
+    a.app .em { font-size: 30px; }
+    a.app .nm { font-weight: 900; font-size: 17px; }
+    a.app .ds { color: var(--muted); font-size: 14px; line-height: 1.6; flex: 1; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .tags span { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #1e293b; color: #cbd5e1; }
+    .tags span.cam { background: rgba(56,189,248,.15); color: #7dd3fc; }
+    .tags span.ai { background: rgba(168,85,247,.18); color: #d8b4fe; }
+    .tags span.link { background: rgba(249,115,22,.15); color: #fdba74; }
+    footer { text-align: center; color: #475569; font-size: 12px; padding: 30px 20px 50px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="hero">
+    <div class="eyebrow">EAIM 체육교과</div>
+    <h1>몸으로 배우고,<br>기록으로 자라는 체육</h1>
+    <p>측정하고, 팀을 짜고, 박자에 맞춰 움직이고, 자기 폼을 분석하는 체육 수업 도구 모음이에요. 모든 기록은 각 기기 안에 저장돼요.</p>
+    <div class="court-line"></div>
+</div>
+
+<main>
+    <section>
+        <h2>수업 운영</h2>
+        <p>매 시간 바로 꺼내 쓰는 측정·편성·타이머 도구</p>
+        <div class="grid">
+            <a class="app" style="--c:#f97316" href="eaim-pe-record.html">
+                <div class="top"><span class="em">⏱️</span><span class="nm">기록 측정</span></div>
+                <div class="ds">휴대폰 한 대로 조 단위 달리기·횟수 측정. 환산표로 점수가 자동으로 나오고 엑셀로 내보내요.</div>
+                <div class="tags"><span>선생님용</span></div>
+            </a>
+            <a class="app" style="--c:#f97316" href="team-league.html">
+                <div class="top"><span class="em">⚖️</span><span class="nm">팀 편성 · 학급 리그</span></div>
+                <div class="ds">기록 점수로 실력이 고른 팀을 자동으로 짜고, 리그 일정과 순위표까지 관리해요.</div>
+                <div class="tags"><span>선생님용</span><span class="link">기록 측정과 연동</span></div>
+            </a>
+            <a class="app" style="--c:#f97316" href="circuit-timer.html">
+                <div class="top"><span class="em">🔁</span><span class="nm">서킷 트레이닝 타이머</span></div>
+                <div class="ds">스테이션마다 지금 어느 모둠이 운동하는지 한 화면에. 타바타 모드도 있어요.</div>
+                <div class="tags"><span>프로젝터 추천</span></div>
+            </a>
+        </div>
+    </section>
+
+    <section>
+        <h2>리듬과 움직임</h2>
+        <p>음악 박자와 카메라 자세 인식으로 몸을 움직이는 활동</p>
+        <div class="grid">
+            <a class="app" style="--c:#38bdf8" href="eaim-beat-basket-3.html">
+                <div class="top"><span class="em">🏀</span><span class="nm">비트 & 바스켓</span></div>
+                <div class="ds">기분에 맞는 곡을 고르고 박자를 두드려, 음악 비트에 맞춰 팀별 드리블·패스·슛을 해요.</div>
+                <div class="tags"><span class="ai">AI 키</span></div>
+            </a>
+            <a class="app" style="--c:#38bdf8" href="eaim-pose-stretch.html">
+                <div class="top"><span class="em">🧘</span><span class="nm">스트레칭 따라하기</span></div>
+                <div class="ds">화면 속 동작을 따라 하면 관절마다 일치도를 알려줘요. 선생님 시범을 녹화해 동작을 늘려요.</div>
+                <div class="tags"><span class="cam">카메라</span></div>
+            </a>
+            <a class="app" style="--c:#38bdf8" href="rhythm-pose.html">
+                <div class="top"><span class="em">🎵</span><span class="nm">리듬 포즈 게임</span></div>
+                <div class="ds">드럼 비트에 맞춰 바뀌는 포즈를 제때 맞추면 PERFECT! 콤보를 이어 점수를 쌓아요.</div>
+                <div class="tags"><span class="cam">카메라</span><span class="link">스트레칭 동작 공유</span></div>
+            </a>
+            <a class="app" style="--c:#38bdf8" href="dance-maker.html">
+                <div class="top"><span class="em">💃</span><span class="nm">창작 안무 만들기</span></div>
+                <div class="ds">동작 카드를 8마디에 배치해 모둠 안무를 짜고, 최대 4명의 정확도와 싱크를 확인해요.</div>
+                <div class="tags"><span class="cam">카메라</span><span class="link">스트레칭 동작 공유</span></div>
+            </a>
+            <a class="app" style="--c:#38bdf8" href="slow-cam.html">
+                <div class="top"><span class="em">🎥</span><span class="nm">동작 분석 슬로우 캠</span></div>
+                <div class="ds">슛·도약·스윙을 찍어 느리게 돌려 보고, 관절 각도와 보조선으로 자기 폼을 분석해요.</div>
+                <div class="tags"><span class="cam">카메라</span></div>
+            </a>
+        </div>
+    </section>
+
+    <section>
+        <h2>이해와 안전</h2>
+        <p>규칙과 전술을 이해하고, 생명을 지키는 방법을 익혀요</p>
+        <div class="grid">
+            <a class="app" style="--c:#22c55e" href="tactics-board.html">
+                <div class="top"><span class="em">📋</span><span class="nm">전술 보드</span></div>
+                <div class="ds">농구·축구·핸드볼 코트에서 선수를 옮겨 장면을 만들고, 작전을 애니메이션으로 발표해요.</div>
+                <div class="tags"><span>모둠 활동</span></div>
+            </a>
+            <a class="app" style="--c:#22c55e" href="referee-quiz.html">
+                <div class="top"><span class="em">🙋</span><span class="nm">심판 판정 퀴즈</span></div>
+                <div class="ds">농구·축구·배구·배드민턴 상황을 보고 판정해요. 모둠 대결 모드와 선생님 문제 추가 기능이 있어요.</div>
+                <div class="tags"><span>모둠 활동</span></div>
+            </a>
+            <a class="app" style="--c:#22c55e" href="cpr-rhythm.html">
+                <div class="top"><span class="em">❤️</span><span class="nm">가슴압박 박자 연습</span></div>
+                <div class="ds">분당 100~120회 빠르기를 몸에 익히고, 소리 없이도 유지되는지 도전해요.</div>
+                <div class="tags"><span>보건·안전 연계</span></div>
+            </a>
+        </div>
+    </section>
+
+    <section>
+        <h2>건강 관리</h2>
+        <p>스스로 기록하고 돌아보는 체력과 운동 습관</p>
+        <div class="grid">
+            <a class="app" style="--c:#a855f7" href="fitness-log.html">
+                <div class="top"><span class="em">📈</span><span class="nm">건강체력 자기관리</span></div>
+                <div class="ds">PAPS 종목 기록 변화와 목표, 운동 일지를 관리해요. 체육고 모드는 수면·컨디션·훈련 부하까지 기록해요.</div>
+                <div class="tags"><span>학생 개인용</span><span class="ai">AI 코치</span></div>
+            </a>
+        </div>
+    </section>
+</main>
+<footer>© 2026 EAIM STUDIO · 체육교과 플랫폼</footer>
+</body>
+</html>

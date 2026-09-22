@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>서킷 트레이닝 타이머 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .run { min-height: calc(100vh - 60px); display: flex; flex-direction: column; padding: 16px; gap: 14px; transition: background .3s; }
+    .run.work { background: #1c0d04; }
+    .run.rest { background: #04142a; }
+    .run.prep { background: #111827; }
+    .phase { text-align: center; font-family: 'Black Han Sans', sans-serif; font-size: clamp(28px, 5vw, 56px); }
+    .run.work .phase { color: var(--accent); }
+    .run.rest .phase { color: #38bdf8; }
+    .clock { text-align: center; font-size: clamp(110px, 24vw, 300px); }
+    .sub { text-align: center; color: var(--muted); font-size: clamp(14px, 1.8vw, 20px); }
+    .progress { height: 10px; background: #1e293b; border-radius: 6px; overflow: hidden; }
+    .progress div { height: 100%; background: var(--accent); width: 0; }
+    .run.rest .progress div { background: #38bdf8; }
+    .stations { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+    .st { background: rgba(15,23,42,.9); border-radius: 16px; padding: 14px; text-align: center; border: 2px solid var(--line); }
+    .st .ex { font-weight: 900; font-size: clamp(18px, 2.4vw, 28px); }
+    .st .grp { font-family: 'Black Han Sans', sans-serif; font-size: clamp(22px, 3vw, 36px); margin-top: 4px; }
+    .st .nx { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .tabata-ex { text-align: center; font-weight: 900; font-size: clamp(34px, 6vw, 80px); }
+    .ctrl { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .ctrl button { min-width: 110px; }
+    .num-in { width: 90px; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>서킷 트레이닝 타이머</h1><a href="index.html">← 체육 플랫폼</a></header>
+
+<div id="setup" class="wrap stack">
+    <div class="tabs">
+        <button class="sel" data-mode="circuit">서킷 (모둠 순환)</button>
+        <button data-mode="tabata">타바타</button>
+    </div>
+
+    <div id="circuitBox" class="card stack">
+        <h2>스테이션</h2>
+        <p class="muted small-text">한 줄에 한 스테이션. 스테이션 수만큼 모둠이 생기고, 신호마다 옆 스테이션으로 이동해요.</p>
+        <textarea id="stations" rows="6">점핑잭
+스쿼트
+플랭크
+사이드 스텝
+버피
+줄넘기</textarea>
+        <div class="row">
+            <label><span class="label">운동(초)</span><input class="num-in" type="number" id="cWork" value="40" min="5"></label>
+            <label><span class="label">이동·휴식(초)</span><input class="num-in" type="number" id="cRest" value="20" min="0"></label>
+            <label><span class="label">바퀴 수</span><input class="num-in" type="number" id="cLaps" value="1" min="1" max="5"></label>
+        </div>
+        <label><span class="label">모둠 이름 (쉼표로 구분, 비우면 1모둠, 2모둠…)</span><input id="groupNames" style="width:100%" placeholder="예: 호랑이, 독수리, 돌고래"></label>
+    </div>
+
+    <div id="tabataBox" class="card stack hidden">
+        <h2>타바타</h2>
+        <p class="muted small-text">20초 운동, 10초 휴식을 8번 반복하는 4분 고강도 인터벌이에요. 동작을 여러 개 넣으면 차례로 바뀌어요.</p>
+        <textarea id="tabataEx" rows="4">하이니
+스쿼트 점프
+마운틴 클라이머
+점핑잭</textarea>
+        <div class="row">
+            <label><span class="label">운동(초)</span><input class="num-in" type="number" id="tWork" value="20" min="5"></label>
+            <label><span class="label">휴식(초)</span><input class="num-in" type="number" id="tRest" value="10" min="0"></label>
+            <label><span class="label">반복</span><input class="num-in" type="number" id="tRounds" value="8" min="1" max="30"></label>
+        </div>
+    </div>
+
+    <div class="card row">
+        <span class="grow muted" id="totalInfo"></span>
+        <button class="primary" id="btnStart">시작</button>
+    </div>
+    <p class="muted small-text">음악은 다른 기기나 탭에서 틀어 주세요. 신호음은 마지막 3초와 교대 순간에 울려요.</p>
+</div>
+
+<div id="run" class="run prep hidden">
+    <div class="phase" id="phase"></div>
+    <div class="clock big-num" id="clock">0</div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="sub" id="sub"></div>
+    <div id="tabataNow" class="tabata-ex hidden"></div>
+    <div class="stations" id="stGrid"></div>
+    <div class="ctrl">
+        <button id="btnPause">일시정지</button>
+        <button id="btnSkip">다음 구간</button>
+        <button id="btnFull">전체 화면</button>
+        <button id="btnEnd">끝내기</button>
+    </div>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+let mode = 'circuit', segs = [], si = 0, segStart = 0, pausedAt = null, raf = null, lastBeep = null, cfg = null;
+const saved = PE.load('eaim_pe_circuit_v1', null);
+if (saved) {
+    ['stations', 'cWork', 'cRest', 'cLaps', 'groupNames', 'tabataEx', 'tWork', 'tRest', 'tRounds'].forEach(k => { if (saved[k] != null) PE.$(k).value = saved[k]; });
+}
+const lines = (id) => PE.$(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+
+function build() {
+    segs = [{ type: 'prep', dur: 10 }];
+    if (mode === 'circuit') {
+        const st = lines('stations'), n = st.length;
+        const names = PE.$('groupNames').value.split(',').map(s => s.trim()).filter(Boolean);
+        const groups = st.map((_, i) => names[i] || `${i + 1}모둠`);
+        const work = Math.max(5, +PE.$('cWork').value), rest = Math.max(0, +PE.$('cRest').value), laps = Math.max(1, +PE.$('cLaps').value);
+        const total = n * laps;
+        for (let r = 0; r < total; r++) {
+            segs.push({ type: 'work', dur: work, rot: r });
+            if (r < total - 1 && rest > 0) segs.push({ type: 'rest', dur: rest, rot: r + 1 });
+        }
+        cfg = { st, groups, total };
+    } else {
+        const ex = lines('tabataEx'); if (!ex.length) ex.push('운동');
+        const work = Math.max(5, +PE.$('tWork').value), rest = Math.max(0, +PE.$('tRest').value), rounds = Math.max(1, +PE.$('tRounds').value);
+        for (let r = 0; r < rounds; r++) {
+            segs.push({ type: 'work', dur: work, rot: r, ex: ex[r % ex.length] });
+            if (r < rounds - 1 && rest > 0) segs.push({ type: 'rest', dur: rest, rot: r + 1, ex: ex[(r + 1) % ex.length] });
+        }
+        cfg = { rounds };
+    }
+}
+function updateTotal() {
+    build();
+    const sec = segs.slice(1).reduce((a, s) => a + s.dur, 0);
+    PE.$('totalInfo').textContent = mode === 'circuit'
+        ? `${cfg.st.length}개 스테이션 · ${cfg.st.length}개 모둠 · 총 ${Math.floor(sec / 60)}분 ${sec % 60}초`
+        : `${cfg.rounds}회 반복 · 총 ${Math.floor(sec / 60)}분 ${sec % 60}초`;
+}
+
+function renderSeg() {
+    const s = segs[si], run = PE.$('run');
+    run.className = 'run ' + s.type;
+    PE.$('phase').textContent = s.type === 'prep' ? '준비' : s.type === 'work' ? '운동!' : mode === 'circuit' ? '다음 스테이션으로 이동' : '휴식';
+    if (mode === 'circuit') {
+        const { st, groups, total } = cfg, n = st.length;
+        const rot = s.type === 'prep' ? 0 : s.rot;
+        PE.$('sub').textContent = s.type === 'prep' ? '각 모둠은 첫 스테이션에 서 주세요' : `${rot + 1} / ${total} 구간`;
+        // 모둠 g는 rot번째 구간에 (g + rot) % n 스테이션에 있음
+        PE.$('stGrid').innerHTML = st.map((ex, k) => {
+            const g = ((k - rot) % n + n) % n, gNext = ((k - rot - 1) % n + n) % n;
+            return `<div class="st"><div class="ex">${PE.esc(ex)}</div><div class="grp">${PE.esc(groups[g])}</div>${s.type === 'work' && rot < total - 1 ? `<div class="nx">다음: ${PE.esc(groups[gNext])}</div>` : ''}</div>`;
+        }).join('');
+        PE.$('tabataNow').classList.add('hidden');
+    } else {
+        PE.$('stGrid').innerHTML = '';
+        PE.$('tabataNow').classList.remove('hidden');
+        PE.$('tabataNow').textContent = s.type === 'prep' ? segs[1].ex : s.type === 'rest' ? `다음: ${s.ex}` : s.ex;
+        PE.$('sub').textContent = s.type === 'prep' ? '곧 시작해요' : `${s.rot + 1} / ${cfg.rounds} 라운드`;
+    }
+}
+function tick() {
+    if (si >= segs.length) return;
+    const now = performance.now(), s = segs[si];
+    const el = pausedAt != null ? pausedAt - segStart : now - segStart;
+    const left = Math.max(0, s.dur - el / 1000), sec = Math.ceil(left);
+    PE.$('clock').textContent = sec;
+    PE.$('bar').style.width = `${Math.min(100, el / 10 / s.dur)}%`;
+    if (pausedAt == null) {
+        if (sec <= 3 && sec >= 1 && lastBeep !== sec) { PE.tone(880, 0.12); lastBeep = sec; }
+        if (left <= 0) { next(); if (si >= segs.length) return; }
+    }
+    raf = requestAnimationFrame(tick);
+}
+function next() {
+    si++; lastBeep = null;
+    if (si >= segs.length) { finish(); return; }
+    segStart = performance.now();
+    const s = segs[si];
+    if (s.type === 'work') { PE.tone(1320, 0.5); } else { PE.tone(523, 0.6, 0, 'triangle', 0.35); }
+    renderSeg();
+}
+function finish() {
+    cancelAnimationFrame(raf);
+    PE.tone(784, 0.2, 0); PE.tone(988, 0.2, 0.2); PE.tone(1319, 0.6, 0.4);
+    PE.$('run').className = 'run prep';
+    PE.$('phase').textContent = '수고했어요! 🎉';
+    PE.$('clock').textContent = '끝';
+    PE.$('sub').textContent = '천천히 걸으며 호흡을 가라앉혀요';
+    PE.$('stGrid').innerHTML = ''; PE.$('tabataNow').classList.add('hidden');
+    PE.wake(false);
+}
+function start() {
+    build();
+    if (mode === 'circuit' && cfg.st.length < 2) { alert('스테이션을 2개 이상 적어 주세요.'); return; }
+    PE.save('eaim_pe_circuit_v1', Object.fromEntries(['stations', 'cWork', 'cRest', 'cLaps', 'groupNames', 'tabataEx', 'tWork', 'tRest', 'tRounds'].map(k => [k, PE.$(k).value])));
+    PE.ctx(); PE.wake(true);
+    si = 0; segStart = performance.now(); pausedAt = null; lastBeep = null;
+    PE.$('setup').classList.add('hidden'); PE.$('run').classList.remove('hidden');
+    PE.$('btnPause').textContent = '일시정지';
+    renderSeg(); cancelAnimationFrame(raf); tick();
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('sel', x === b));
+    PE.$('circuitBox').classList.toggle('hidden', mode !== 'circuit');
+    PE.$('tabataBox').classList.toggle('hidden', mode !== 'tabata');
+    updateTotal();
+});
+document.querySelectorAll('#setup input, #setup textarea').forEach(el => el.addEventListener('input', updateTotal));
+PE.$('btnStart').onclick = start;
+PE.$('btnPause').onclick = () => {
+    if (pausedAt == null) { pausedAt = performance.now(); PE.$('btnPause').textContent = '계속'; }
+    else { segStart += performance.now() - pausedAt; pausedAt = null; PE.$('btnPause').textContent = '일시정지'; }
+};
+PE.$('btnSkip').onclick = () => { if (si < segs.length) { if (pausedAt != null) { pausedAt = null; PE.$('btnPause').textContent = '일시정지'; } next(); } };
+PE.$('btnFull').onclick = () => PE.fullscreen(PE.$('run'));
+PE.$('btnEnd').onclick = () => { cancelAnimationFrame(raf); PE.wake(false); PE.$('run').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); if (document.fullscreenElement) document.exitFullscreen(); };
+updateTotal();
+</script>
+</body>
+</html>

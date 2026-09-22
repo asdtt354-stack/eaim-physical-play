@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>리듬 포즈 게임 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .stage { position: relative; width: 100%; aspect-ratio: 16/9; max-height: 84vh; background: #000; border-radius: 18px; overflow: hidden; margin: 0 auto; }
+    .stage canvas#view { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .panel { position: absolute; background: rgba(15,23,42,.85); border-radius: 16px; padding: 10px; }
+    .now { left: 14px; top: 14px; width: min(28%, 250px); text-align: center; }
+    .now canvas { width: 100%; aspect-ratio: 3/4; display: block; }
+    .now .nm { font-family: 'Black Han Sans', sans-serif; font-size: clamp(14px, 2vw, 22px); }
+    .nextp { left: 14px; bottom: 14px; width: min(14%, 120px); text-align: center; opacity: .8; }
+    .nextp canvas { width: 100%; aspect-ratio: 3/4; display: block; }
+    .score { right: 14px; top: 14px; text-align: right; min-width: 130px; }
+    .score .pts { font-family: 'Black Han Sans', sans-serif; font-size: clamp(30px, 5vw, 56px); line-height: 1; }
+    .beats { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 10px; }
+    .beats i { width: clamp(14px, 2vw, 22px); height: clamp(14px, 2vw, 22px); border-radius: 50%; background: rgba(51,65,85,.9); display: block; }
+    .beats i.on { background: #fbbf24; }
+    .beats i.last { outline: 3px solid var(--accent); }
+    .judge { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-family: 'Black Han Sans', sans-serif; font-size: clamp(40px, 8vw, 110px); text-shadow: 0 4px 20px rgba(0,0,0,.6); pointer-events: none; }
+    .judge.pop { animation: pop .5s ease-out forwards; }
+    @keyframes pop { 0% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1); opacity: 0; } }
+    .live { right: 14px; bottom: 60px; font-family: 'Black Han Sans', sans-serif; font-size: clamp(22px, 3vw, 36px); }
+    .center-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: rgba(2,6,23,.5); font-family: 'Black Han Sans', sans-serif; font-size: clamp(40px, 10vw, 150px); color: #fbbf24; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>리듬 포즈 게임</h1><a href="index.html">← 체육 플랫폼</a></header>
+
+<div id="setup" class="wrap stack">
+    <div class="card stack">
+        <h2>박자에 맞춰 포즈를 바꿔요</h2>
+        <p class="muted small-text" style="margin:0">정해진 박이 지날 때마다 동작이 바뀌어요. 박자가 끝나기 전에 자세를 맞추면 PERFECT! 동작은 스트레칭 따라하기에서 선생님이 녹화한 것을 함께 써요.</p>
+        <label><span class="label">빠르기 <b id="bpmLbl">96</b> BPM</span><input type="range" id="bpm" min="70" max="130" value="96" style="width:100%"></label>
+        <div class="row">
+            <span class="label" style="margin:0">동작 바뀌는 간격</span>
+            <button class="small" data-beats="4">4박</button>
+            <button class="small sel" data-beats="8">8박</button>
+        </div>
+        <div class="row">
+            <span class="label" style="margin:0">길이</span>
+            <button class="small" data-len="8">동작 8개</button>
+            <button class="small sel" data-len="12">동작 12개</button>
+            <button class="small" data-len="16">동작 16개</button>
+        </div>
+        <div id="poseChips" class="row"></div>
+        <button class="primary" id="btnStart">게임 시작</button>
+        <p class="muted small-text" id="status" style="margin:0"></p>
+    </div>
+</div>
+
+<div id="game" class="hidden" style="padding:12px">
+    <div class="stage">
+        <canvas id="view"></canvas>
+        <div class="panel now"><canvas id="nowFig" width="300" height="400"></canvas><div class="nm" id="nowName"></div></div>
+        <div class="panel nextp"><div class="small-text muted">다음</div><canvas id="nextFig" width="150" height="200"></canvas></div>
+        <div class="panel score"><div class="small-text muted">점수</div><div class="pts" id="pts">0</div><div class="small-text" id="combo"></div></div>
+        <div class="panel live" id="live">–</div>
+        <div class="beats" id="beats"></div>
+        <div class="judge" id="judge"></div>
+        <div class="center-msg hidden" id="center"></div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:10px"><button id="btnQuit">그만하기</button></div>
+</div>
+
+<div id="result" class="wrap stack hidden">
+    <h2 style="text-align:center">결과</h2>
+    <div class="big-num" style="text-align:center;font-size:80px;color:var(--accent)" id="rPts"></div>
+    <p style="text-align:center" class="muted" id="rInfo"></p>
+    <div class="card"><table id="rTable"></table></div>
+    <div class="row"><button class="primary grow" id="btnAgain">다시 하기</button><button class="grow" id="btnSetup">설정으로</button></div>
+</div>
+
+<video id="video" playsinline muted class="hidden"></video>
+<script src="pe-common.js"></script>
+<script type="module">
+import { loadPoses, initPose, startCamera, detect, computeFeatures, scorePose, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
+
+const video = PE.$('video'), view = PE.$('view');
+let beatsPer = 8, len = 12, bpm = 96, poses = loadPoses(), chosen = new Set(poses.map(p => p.id));
+let drum = null, seq = [], results = [], state = null, running = false;
+
+PE.$('poseChips').innerHTML = '<span class="label" style="margin:0;width:100%">사용할 동작</span>' + poses.map(p => `<button class="small sel" data-pose="${p.id}">${PE.esc(p.name)}</button>`).join('');
+PE.$('poseChips').onclick = (e) => { const b = e.target.closest('[data-pose]'); if (!b) return; const id = b.dataset.pose; chosen.has(id) ? chosen.delete(id) : chosen.add(id); b.classList.toggle('sel', chosen.has(id)); };
+PE.$('bpm').oninput = () => { bpm = +PE.$('bpm').value; PE.$('bpmLbl').textContent = bpm; };
+const pick = (attr, set) => document.querySelectorAll(`[${attr}]`).forEach(b => b.onclick = () => { set(+b.getAttribute(attr)); document.querySelectorAll(`[${attr}]`).forEach(x => x.classList.toggle('sel', x === b)); });
+pick('data-beats', v => beatsPer = v);
+pick('data-len', v => len = v);
+
+function makeSeq() {
+    const pool = poses.filter(p => chosen.has(p.id));
+    const out = [];
+    for (let i = 0; i < len; i++) {
+        let p; do { p = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && out.length && p === out[out.length - 1]);
+        out.push(p);
+    }
+    return out;
+}
+
+async function start() {
+    if (chosen.size < 2) { alert('동작을 2개 이상 골라 주세요.'); return; }
+    PE.$('btnStart').disabled = true; PE.$('status').textContent = '카메라와 자세 인식을 준비하는 중…';
+    try { await initPose({ numPoses: 1 }); await startCamera(video, view); }
+    catch (e) { PE.$('status').textContent = cameraErrorText(e); PE.$('btnStart').disabled = false; return; }
+    PE.$('btnStart').disabled = false; PE.$('status').textContent = '';
+    PE.$('setup').classList.add('hidden'); PE.$('result').classList.add('hidden'); PE.$('game').classList.remove('hidden');
+    PE.wake(true);
+    seq = makeSeq(); results = []; state = { seg: -1, best: 0, smooth: null, total: 0, combo: 0, maxCombo: 0, lastBeat: -99 };
+    PE.$('beats').innerHTML = Array.from({ length: beatsPer }, (_, i) => `<i class="${i === beatsPer - 1 ? 'last' : ''}"></i>`).join('');
+    PE.$('pts').textContent = '0'; PE.$('combo').textContent = '';
+    drum = new DrumLoop(bpm); drum.start(0.3);
+    if (!running) { running = true; requestAnimationFrame(loop); }
+}
+
+function showSeg(i) {
+    drawFigure(PE.$('nowFig'), seq[i].points); PE.$('nowName').textContent = seq[i].name;
+    if (seq[i + 1]) drawFigure(PE.$('nextFig'), seq[i + 1].points, '#64748b'); else PE.$('nextFig').getContext('2d').clearRect(0, 0, 150, 200);
+}
+function judge(i) {
+    const s = state.best;
+    const j = s >= 88 ? ['PERFECT', '#22c55e', 300] : s >= 72 ? ['GOOD', '#38bdf8', 150] : s >= 55 ? ['OK', '#eab308', 50] : ['MISS', '#ef4444', 0];
+    state.combo = j[2] >= 150 ? state.combo + 1 : 0;
+    state.maxCombo = Math.max(state.maxCombo, state.combo);
+    const gain = j[2] + (state.combo > 1 ? state.combo * 20 : 0);
+    state.total += gain;
+    results.push({ pose: seq[i], score: Math.round(s), label: j[0] });
+    const el = PE.$('judge'); el.textContent = j[0]; el.style.color = j[1]; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    PE.$('pts').textContent = state.total;
+    PE.$('combo').textContent = state.combo > 1 ? `${state.combo} 콤보!` : '';
+}
+
+function loop(now) {
+    if (PE.$('game').classList.contains('hidden')) { running = false; return; }
+    const people = detect(video, view, now), P = people[0];
+    let per = null;
+    const pos = drum ? drum.beatPos() : -1;          // 0~4박: 준비, 4박부터 동작 시작
+    const center = PE.$('center');
+    if (pos < 4) {
+        center.classList.remove('hidden'); center.textContent = pos < 0 ? '준비' : String(4 - Math.floor(pos));
+    } else {
+        center.classList.add('hidden');
+        const seg = Math.floor((pos - 4) / beatsPer);
+        if (seg !== state.seg) {
+            if (state.seg >= 0) judge(state.seg);
+            state.seg = seg; state.best = 0; state.smooth = null;
+            if (seg >= seq.length) { finish(); drawLive(view, video, P ? [P] : []); return; }
+            showSeg(seg);
+        }
+        const beatIn = Math.floor((pos - 4) % beatsPer);
+        PE.$('beats').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k <= beatIn));
+        if (P) {
+            const r = scorePose(computeFeatures(P), seq[seg]);
+            if (r) {
+                state.smooth = state.smooth == null ? r.score : state.smooth * 0.7 + r.score * 0.3;
+                state.best = Math.max(state.best, state.smooth);
+                per = r.per;
+                PE.$('live').textContent = Math.round(state.smooth);
+                PE.$('live').style.color = state.smooth >= 72 ? 'var(--good)' : state.smooth >= 55 ? 'var(--mid)' : 'var(--bad)';
+            } else PE.$('live').textContent = '–';
+        } else PE.$('live').textContent = '–';
+    }
+    drawLive(view, video, P ? [P] : [], [per]);
+    requestAnimationFrame(loop);
+}
+
+function finish() {
+    drum.stop(); PE.wake(false); running = false;
+    PE.tone(784, 0.2, 0.1); PE.tone(988, 0.2, 0.3); PE.tone(1319, 0.5, 0.5);
+    const cnt = (l) => results.filter(r => r.label === l).length;
+    PE.$('rPts').textContent = state.total;
+    PE.$('rInfo').textContent = `PERFECT ${cnt('PERFECT')} · GOOD ${cnt('GOOD')} · OK ${cnt('OK')} · MISS ${cnt('MISS')} · 최대 ${state.maxCombo}콤보`;
+    PE.$('rTable').innerHTML = '<tr><th>#</th><th>동작</th><th>일치도</th><th>판정</th></tr>' + results.map((r, i) => `<tr><td>${i + 1}</td><td>${PE.esc(r.pose.name)}</td><td>${r.score}</td><td>${r.label}</td></tr>`).join('');
+    PE.$('game').classList.add('hidden'); PE.$('result').classList.remove('hidden');
+}
+
+PE.$('btnStart').onclick = start;
+PE.$('btnAgain').onclick = start;
+PE.$('btnSetup').onclick = () => { PE.$('result').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); };
+PE.$('btnQuit').onclick = () => { if (drum) drum.stop(); PE.wake(false); PE.$('game').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); };
+</script>
+</body>
+</html>

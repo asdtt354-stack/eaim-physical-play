@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>가슴압박 박자 연습 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .pad { width: min(78vw, 340px); aspect-ratio: 1; margin: 10px auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column;
+           background: radial-gradient(circle at 50% 40%, #fda4af, #e11d48 70%); color: #fff; user-select: none; touch-action: manipulation; box-shadow: 0 0 0 0 rgba(225,29,72,.5); }
+    .pad.hit { animation: press .16s ease-out; }
+    @keyframes press { 0% { transform: scale(.9); } 100% { transform: scale(1); } }
+    .pad .cnt { font-family: 'Black Han Sans', sans-serif; font-size: 96px; line-height: 1; }
+    .guide-beat { width: 22px; height: 22px; border-radius: 50%; background: #334155; margin: 0 auto; }
+    .guide-beat.on { background: #fbbf24; }
+    .gauge { position: relative; height: 26px; background: #1e293b; border-radius: 13px; overflow: hidden; }
+    .gauge .band { position: absolute; top: 0; bottom: 0; background: rgba(34,197,94,.35); }
+    .gauge .needle { position: absolute; top: -2px; bottom: -2px; width: 4px; background: #fff; border-radius: 2px; transition: left .15s; }
+    .gauge-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .fb { text-align: center; font-weight: 900; font-size: 22px; min-height: 32px; }
+    .breath { text-align: center; padding: 30px 10px; }
+    .breath .big-num { font-size: 64px; color: #38bdf8; }
+    ol.steps { line-height: 1.9; padding-left: 20px; margin: 0; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>가슴압박 박자 연습</h1><a href="index.html">← 체육 플랫폼</a></header>
+
+<div id="setup" class="wrap stack">
+    <div class="card">
+        <h2>심폐소생술 순서 (성인 기준)</h2>
+        <ol class="steps">
+            <li>어깨를 두드리며 반응을 확인해요.</li>
+            <li>반응이 없으면 "119에 신고해 주세요", "자동심장충격기(AED) 가져다주세요"라고 특정한 사람을 지목해 부탁해요.</li>
+            <li>가슴 한가운데(가슴뼈 아래쪽 절반)에 두 손을 겹쳐 올리고, 팔을 곧게 편 채 약 5cm 깊이로 누르기 시작해요.</li>
+            <li><b>1분에 100~120번</b> 빠르기로, 누른 뒤에는 가슴이 완전히 올라오게 해요.</li>
+            <li>인공호흡을 배운 사람은 30번 누르고 2번 불어넣기를 반복하고, 배우지 않았다면 가슴압박만 계속해요.</li>
+            <li>AED가 도착하면 음성 안내를 따르고, 구급대가 올 때까지 멈추지 않아요.</li>
+        </ol>
+    </div>
+    <div class="card stack">
+        <h2>연습 방법 고르기</h2>
+        <div class="row">
+            <button class="sel small" data-mode="hands">가슴압박만 (2분)</button>
+            <button class="small" data-mode="30:2">30번 누르고 2번 호흡 (5세트)</button>
+        </div>
+        <div class="row">
+            <label class="grow"><span class="label">안내 박자 <b id="bpmLbl">110</b>회/분</span><input type="range" id="bpm" min="100" max="120" value="110" style="width:100%"></label>
+        </div>
+        <div class="row">
+            <button class="sel small" data-guide="on">박자 소리 켜고 연습</button>
+            <button class="small" data-guide="off">소리 없이 도전</button>
+        </div>
+        <button class="primary" id="btnStart">연습 시작</button>
+        <p class="muted small-text" style="margin:0">화면의 원을 박자에 맞춰 누르거나, 실습용 마네킹을 누르면서 스페이스바(또는 짝이 화면)를 함께 눌러요. 이 앱은 빠르기와 일정함만 확인하고, 누르는 깊이는 측정하지 못해요.</p>
+    </div>
+</div>
+
+<div id="run" class="wrap stack hidden">
+    <div class="row"><span class="muted grow" id="runInfo"></span><span class="big-num" style="font-size:28px" id="timeLeft"></span></div>
+    <div class="guide-beat" id="beatDot"></div>
+    <div id="padArea">
+        <div class="pad" id="pad"><div class="cnt" id="cnt">0</div><div id="padSub">여기를 박자에 맞춰 누르세요</div></div>
+    </div>
+    <div id="breathArea" class="breath hidden card">
+        <div class="muted">인공호흡 2회</div>
+        <div class="big-num" id="breathCount">5</div>
+        <p class="muted">머리를 젖히고 턱을 들어 올린 뒤, 1초씩 2번 불어넣어요</p>
+    </div>
+    <div class="fb" id="fb"></div>
+    <div>
+        <div class="gauge"><div class="band" id="band"></div><div class="needle" id="needle" style="left:50%"></div></div>
+        <div class="gauge-labels"><span>80</span><span>100</span><span>120</span><span>140</span></div>
+        <p class="muted small-text" style="text-align:center;margin:6px 0 0">지금 빠르기 <b id="rate">–</b> 회/분</p>
+    </div>
+    <button id="btnStop">그만하기</button>
+</div>
+
+<div id="result" class="wrap stack hidden">
+    <h2 style="text-align:center">연습 결과</h2>
+    <div class="big-num" style="text-align:center;font-size:72px;color:var(--accent)" id="rScore"></div>
+    <p style="text-align:center" class="muted" id="rMsg"></p>
+    <div class="card"><table id="rTable"></table></div>
+    <div class="row"><button class="primary grow" id="btnAgain">다시 연습</button><button class="grow" id="btnBack">설정으로</button></div>
+</div>
+
+<script src="pe-common.js"></script>
+<script>
+let mode = 'hands', guide = true, bpm = 110;
+let taps = [], total = 0, setCount = 0, inSet = 0, phase = 'idle', t0 = 0, endAt = 0, raf = null, metro = null, breathUntil = 0;
+const MIN = 80, MAX = 140;
+
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('sel', x === b)); });
+document.querySelectorAll('[data-guide]').forEach(b => b.onclick = () => { guide = b.dataset.guide === 'on'; document.querySelectorAll('[data-guide]').forEach(x => x.classList.toggle('sel', x === b)); });
+PE.$('bpm').oninput = () => { bpm = +PE.$('bpm').value; PE.$('bpmLbl').textContent = bpm; };
+const pct = (v) => `${(Math.min(MAX, Math.max(MIN, v)) - MIN) / (MAX - MIN) * 100}%`;
+PE.$('band').style.left = pct(100); PE.$('band').style.width = `${20 / (MAX - MIN) * 100}%`;
+
+// 박자 소리: 오디오 시계로 예약
+function startMetro() {
+    stopMetro();
+    const c = PE.ctx(); let next = c.currentTime + 0.1; const iv = 60 / bpm;
+    metro = { next, timer: setInterval(() => {
+        while (metro.next < c.currentTime + 0.12) { if (guide && phase === 'press') PE.tone(1000, 0.04, metro.next - c.currentTime, 'square', 0.18); metro.next += iv; }
+    }, 25), origin: next, iv };
+}
+function stopMetro() { if (metro) clearInterval(metro.timer); metro = null; }
+
+function start() {
+    taps = []; total = 0; setCount = 0; inSet = 0;
+    PE.ctx(); PE.wake(true);
+    PE.$('setup').classList.add('hidden'); PE.$('result').classList.add('hidden'); PE.$('run').classList.remove('hidden');
+    PE.$('runInfo').textContent = mode === 'hands' ? '가슴압박만 · 2분' : '30:2 · 5세트';
+    phase = 'press'; t0 = performance.now(); endAt = mode === 'hands' ? t0 + 120000 : 0;
+    showPress(); startMetro(); cancelAnimationFrame(raf); loop();
+}
+function showPress() {
+    PE.$('padArea').classList.remove('hidden'); PE.$('breathArea').classList.add('hidden');
+    PE.$('padSub').textContent = mode === '30:2' ? `${setCount + 1}세트 · 30번 누르기` : '여기를 박자에 맞춰 누르세요';
+    PE.$('cnt').textContent = mode === '30:2' ? inSet : total;
+}
+function currentRate() {
+    const recent = taps.slice(-6);
+    if (recent.length < 3) return null;
+    const iv = (recent[recent.length - 1].t - recent[0].t) / (recent.length - 1);
+    return 60000 / iv;
+}
+function press() {
+    if (phase !== 'press') return;
+    const now = performance.now(), prev = taps[taps.length - 1];
+    // 한 번 누른 간격으로 순간 빠르기 계산 (쉬었다가 다시 누른 첫 번째는 제외)
+    const inst = prev && now - prev.t < 1500 ? 60000 / (now - prev.t) : null;
+    taps.push({ t: now, inst, set: setCount });
+    total++; inSet++;
+    const p = PE.$('pad'); p.classList.remove('hit'); void p.offsetWidth; p.classList.add('hit');
+    PE.$('cnt').textContent = mode === '30:2' ? inSet : total;
+    if (mode === '30:2' && inSet >= 30) {
+        phase = 'breath'; breathUntil = now + 5000;
+        PE.$('padArea').classList.add('hidden'); PE.$('breathArea').classList.remove('hidden');
+        PE.tone(660, 0.3, 0, 'triangle', 0.3);
+    }
+}
+function loop() {
+    const now = performance.now();
+    if (metro) { const c = PE.ctx(); const ph = ((c.currentTime - metro.origin) / metro.iv) % 1; PE.$('beatDot').classList.toggle('on', guide && phase === 'press' && ph >= 0 && ph < 0.2); }
+    const r = currentRate();
+    const idle = !taps.length || now - taps[taps.length - 1].t > 1500;
+    PE.$('rate').textContent = r && !idle ? Math.round(r) : '–';
+    PE.$('needle').style.left = r && !idle ? pct(r) : '50%';
+    if (phase === 'press') {
+        PE.$('fb').textContent = idle ? (total ? '멈추지 말고 계속 눌러요!' : '시작하세요') : r < 100 ? '조금 더 빠르게!' : r > 120 ? '조금 천천히!' : '좋아요, 그 빠르기 유지!';
+        PE.$('fb').style.color = idle ? 'var(--mid)' : r < 100 || r > 120 ? 'var(--bad)' : 'var(--good)';
+    } else PE.$('fb').textContent = '';
+    if (mode === 'hands') {
+        const left = Math.max(0, Math.ceil((endAt - now) / 1000));
+        PE.$('timeLeft').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+        if (now >= endAt) { finish(); return; }
+    } else {
+        PE.$('timeLeft').textContent = `${Math.min(setCount + 1, 5)} / 5세트`;
+        if (phase === 'breath') {
+            PE.$('breathCount').textContent = Math.max(1, Math.ceil((breathUntil - now) / 1000));
+            if (now >= breathUntil) {
+                setCount++; inSet = 0;
+                if (setCount >= 5) { finish(); return; }
+                phase = 'press'; PE.tone(1320, 0.3); showPress();
+            }
+        }
+    }
+    raf = requestAnimationFrame(loop);
+}
+function finish() {
+    phase = 'idle'; stopMetro(); cancelAnimationFrame(raf); PE.wake(false);
+    PE.tone(784, 0.2, 0); PE.tone(1047, 0.4, 0.2);
+    const insts = taps.map(t => t.inst).filter(v => v != null);
+    const good = insts.filter(v => v >= 100 && v <= 120).length;
+    const goodPct = insts.length ? Math.round(good / insts.length * 100) : 0;
+    const avg = insts.length ? insts.reduce((a, b) => a + b, 0) / insts.length : 0;
+    const sd = insts.length ? Math.sqrt(insts.reduce((a, b) => a + (b - avg) ** 2, 0) / insts.length) : 0;
+    const fast = insts.filter(v => v > 120).length, slow = insts.filter(v => v < 100).length;
+    PE.$('rScore').textContent = `${goodPct}%`;
+    PE.$('rMsg').textContent = goodPct >= 80 ? '훌륭해요! 실제 상황에서도 이 빠르기를 기억해요.' : slow > fast ? '느려지는 구간이 있었어요. 조금 더 빠르게 연습해 봐요.' : '빨라지는 구간이 있었어요. 가슴이 완전히 올라오도록 조금 천천히 해 봐요.';
+    PE.$('rTable').innerHTML = `
+        <tr><th>적정 빠르기(100~120) 비율</th><td><b>${goodPct}%</b></td></tr>
+        <tr><th>총 누른 횟수</th><td>${total}회</td></tr>
+        <tr><th>평균 빠르기</th><td>${avg ? Math.round(avg) : '–'}회/분</td></tr>
+        <tr><th>너무 빠름 / 너무 느림</th><td>${fast}회 / ${slow}회</td></tr>
+        <tr><th>일정함 (흔들림)</th><td>${insts.length ? (sd < 8 ? '아주 일정함' : sd < 15 ? '일정한 편' : '들쭉날쭉함') : '–'}</td></tr>
+        <tr><th>연습 방법</th><td>${mode === 'hands' ? '가슴압박만 2분' : '30:2 · 5세트'} · ${guide ? '박자 소리 있음' : '소리 없이'}</td></tr>`;
+    PE.$('run').classList.add('hidden'); PE.$('result').classList.remove('hidden');
+}
+
+PE.$('btnStart').onclick = start;
+PE.$('btnAgain').onclick = start;
+PE.$('btnBack').onclick = () => { PE.$('result').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); };
+PE.$('btnStop').onclick = () => { if (taps.length) finish(); else { phase = 'idle'; stopMetro(); cancelAnimationFrame(raf); PE.$('run').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); } };
+PE.$('pad').addEventListener('pointerdown', (e) => { e.preventDefault(); press(); });
+window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !PE.$('run').classList.contains('hidden')) { e.preventDefault(); if (!e.repeat) press(); } });
+</script>
+</body>
+</html>

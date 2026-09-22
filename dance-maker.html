@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>창작 안무 만들기 | EAIM 체육</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .slot { background: var(--card); border: 2px dashed #334155; border-radius: 14px; padding: 6px; text-align: center; cursor: pointer; min-height: 130px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .slot.sel { border: 2px solid var(--accent); }
+    .slot.filled { border-style: solid; border-color: #334155; }
+    .slot.filled.sel { border-color: var(--accent); }
+    .slot canvas { width: 70px; height: 93px; }
+    .slot .no { font-size: 11px; color: var(--muted); }
+    .slot .nm { font-size: 12px; font-weight: 700; }
+    .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    .palette button { background: var(--card); border: 1px solid var(--line); padding: 6px; font-size: 12px; font-weight: 700; }
+    .palette canvas { width: 60px; height: 80px; display: block; margin: 0 auto; }
+    .stage { position: relative; width: 100%; aspect-ratio: 16/9; max-height: 80vh; background: #000; border-radius: 18px; overflow: hidden; }
+    .stage > canvas#view { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .panel { position: absolute; background: rgba(15,23,42,.85); border-radius: 16px; padding: 10px; }
+    .now { left: 14px; top: 14px; width: min(26%, 230px); text-align: center; }
+    .now canvas { width: 100%; aspect-ratio: 3/4; display: block; }
+    .stat { right: 14px; top: 14px; min-width: 150px; }
+    .stat .v { font-family: 'Black Han Sans', sans-serif; font-size: clamp(26px, 4vw, 44px); line-height: 1.1; }
+    .bar8 { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 6px; }
+    .bar8 i { width: clamp(20px, 3vw, 34px); height: 10px; border-radius: 5px; background: rgba(51,65,85,.9); display: block; }
+    .bar8 i.done { background: var(--good); }
+    .bar8 i.now { background: #fbbf24; }
+    .preview-stage { background: var(--card); border-radius: 18px; padding: 20px; text-align: center; }
+    .preview-stage canvas { width: min(60vw, 300px); aspect-ratio: 3/4; }
+    .count { font-family: 'Black Han Sans', sans-serif; font-size: 44px; color: #fbbf24; }
+</style>
+</head>
+<body>
+<header class="bar"><h1>창작 안무 만들기</h1><a href="index.html">← 체육 플랫폼</a></header>
+
+<div id="editor" class="wrap stack">
+    <div class="card stack">
+        <div class="row"><input id="danceName" class="grow" placeholder="안무 이름 (예: 3모둠 봄바람 댄스)"><select id="savedList"><option value="">저장된 안무</option></select></div>
+        <label><span class="label">빠르기 <b id="bpmLbl">100</b> BPM · 한 칸 = 한 마디(4박)</span><input type="range" id="bpm" min="70" max="130" value="100" style="width:100%"></label>
+    </div>
+    <div class="card">
+        <h3>안무 순서 (8마디)</h3>
+        <p class="muted small-text" style="margin:0 0 10px">칸을 누르고 아래 동작 카드를 고르면 들어가요. 같은 칸을 한 번 더 누르면 비워요.</p>
+        <div class="slots" id="slots"></div>
+    </div>
+    <div class="card">
+        <h3>동작 카드</h3>
+        <div class="palette" id="palette"></div>
+        <p class="muted small-text" style="margin:10px 0 0">새 동작은 <a href="eaim-pose-stretch.html" style="color:var(--accent)">스트레칭 따라하기</a> 앱의 선생님 메뉴에서 녹화하면 여기에 나타나요. 모둠이 만든 자세를 녹화해서 쓰면 창작 안무가 돼요.</p>
+    </div>
+    <div class="row">
+        <button id="btnSave">안무 저장</button>
+        <button id="btnPreview">음악과 미리 보기</button>
+        <button class="primary grow" id="btnChallenge">카메라로 도전 (최대 4명)</button>
+    </div>
+    <p class="muted small-text" id="status"></p>
+</div>
+
+<div id="preview" class="wrap stack hidden">
+    <div class="preview-stage">
+        <div class="count" id="pvCount"></div>
+        <canvas id="pvFig" width="300" height="400"></canvas>
+        <div class="title" style="font-size:26px" id="pvName"></div>
+        <div class="muted" id="pvNext"></div>
+    </div>
+    <button id="btnPvStop">멈추고 편집으로</button>
+</div>
+
+<div id="challenge" class="hidden" style="padding:12px">
+    <div class="stage">
+        <canvas id="view"></canvas>
+        <div class="panel now"><canvas id="nowFig" width="300" height="400"></canvas><div class="title" id="nowName"></div></div>
+        <div class="panel stat">
+            <div class="small-text muted">정확도</div><div class="v" id="accV">–</div>
+            <div class="small-text muted" style="margin-top:6px">모둠 싱크</div><div class="v" id="syncV" style="color:#38bdf8">–</div>
+            <div class="small-text muted" id="peopleV"></div>
+        </div>
+        <div class="bar8" id="bar8"></div>
+        <div class="panel" id="cCount" style="left:50%;top:40%;transform:translate(-50%,-50%);font-family:'Black Han Sans';font-size:90px;color:#fbbf24;display:none"></div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:10px"><button id="btnCStop">그만하기</button></div>
+</div>
+
+<div id="result" class="wrap stack hidden">
+    <h2 style="text-align:center">안무 도전 결과</h2>
+    <div class="row" style="justify-content:center;gap:30px;text-align:center">
+        <div><div class="muted small-text">평균 정확도</div><div class="big-num" style="font-size:60px;color:var(--accent)" id="rAcc"></div></div>
+        <div><div class="muted small-text">평균 싱크</div><div class="big-num" style="font-size:60px;color:#38bdf8" id="rSync"></div></div>
+    </div>
+    <p class="muted" style="text-align:center" id="rMsg"></p>
+    <div class="card"><table id="rTable"></table></div>
+    <div class="row"><button class="primary grow" id="btnRAgain">다시 도전</button><button class="grow" id="btnREdit">안무 고치기</button></div>
+</div>
+
+<video id="video" playsinline muted class="hidden"></video>
+<script src="pe-common.js"></script>
+<script type="module">
+import { loadPoses, initPose, startCamera, detect, computeFeatures, scorePose, syncScore, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
+
+const SLOTS = 8, STORE = 'eaim_pe_dance_v1';
+const poses = loadPoses(), byId = Object.fromEntries(poses.map(p => [p.id, p]));
+let slots = Array(SLOTS).fill(null), selSlot = 0, bpm = 100, drum = null, running = null, res = [];
+let saved = PE.load(STORE, []);
+const video = PE.$('video'), view = PE.$('view');
+
+function renderSlots() {
+    PE.$('slots').innerHTML = slots.map((id, i) => `<div class="slot ${id ? 'filled' : ''} ${i === selSlot ? 'sel' : ''}" data-i="${i}">
+        <div class="no">${i + 1}마디</div>${id && byId[id] ? `<canvas width="140" height="186" data-fig="${id}"></canvas><div class="nm">${PE.esc(byId[id].name)}</div>` : '<div class="muted small-text">비어 있음<br>(쉬기)</div>'}</div>`).join('');
+    PE.$('slots').querySelectorAll('canvas[data-fig]').forEach(c => drawFigure(c, byId[c.dataset.fig].points));
+}
+function renderPalette() {
+    PE.$('palette').innerHTML = poses.map(p => `<button data-id="${p.id}"><canvas width="120" height="160"></canvas>${PE.esc(p.name)}</button>`).join('');
+    PE.$('palette').querySelectorAll('button').forEach(b => drawFigure(b.querySelector('canvas'), byId[b.dataset.id].points));
+}
+function renderSaved() { PE.$('savedList').innerHTML = '<option value="">저장된 안무 불러오기</option>' + saved.map((d, i) => `<option value="${i}">${PE.esc(d.name)}</option>`).join(''); }
+
+PE.$('slots').onclick = (e) => {
+    const s = e.target.closest('.slot'); if (!s) return;
+    const i = +s.dataset.i;
+    if (i === selSlot && slots[i]) slots[i] = null;
+    selSlot = i; renderSlots();
+};
+PE.$('palette').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    slots[selSlot] = b.dataset.id;
+    selSlot = Math.min(SLOTS - 1, selSlot + 1); renderSlots();
+};
+PE.$('bpm').oninput = () => { bpm = +PE.$('bpm').value; PE.$('bpmLbl').textContent = bpm; };
+PE.$('btnSave').onclick = () => {
+    const name = PE.$('danceName').value.trim() || `안무 ${saved.length + 1}`;
+    const i = saved.findIndex(d => d.name === name);
+    const item = { name, bpm, slots };
+    if (i >= 0) saved[i] = item; else saved.push(item);
+    PE.save(STORE, saved); renderSaved(); PE.$('status').textContent = `'${name}' 저장했어요.`;
+};
+PE.$('savedList').onchange = () => {
+    const d = saved[+PE.$('savedList').value]; if (!d) return;
+    PE.$('danceName').value = d.name; bpm = d.bpm; PE.$('bpm').value = bpm; PE.$('bpmLbl').textContent = bpm;
+    slots = d.slots.map(id => id && byId[id] ? id : null); selSlot = 0; renderSlots();
+};
+const show = (id) => ['editor', 'preview', 'challenge', 'result'].forEach(s => PE.$(s).classList.toggle('hidden', s !== id));
+const hasMoves = () => slots.some(Boolean) || (alert('동작을 한 칸 이상 넣어 주세요.'), false);
+
+// ── 미리 보기 ──
+PE.$('btnPreview').onclick = () => {
+    if (!hasMoves()) return;
+    show('preview'); drum = new DrumLoop(bpm); drum.start(0.3); running = 'preview';
+    let lastBar = -2;
+    const tick = () => {
+        if (running !== 'preview') return;
+        const pos = drum.beatPos();
+        if (pos < 4) { PE.$('pvCount').textContent = pos < 0 ? '준비' : 4 - Math.floor(pos); }
+        else {
+            const bar = Math.floor((pos - 4) / 4), beat = Math.floor((pos - 4) % 4) + 1;
+            if (bar >= SLOTS) { stopAll(); show('editor'); return; }
+            PE.$('pvCount').textContent = `${bar + 1}마디 · ${beat}`;
+            if (bar !== lastBar) {
+                lastBar = bar; const id = slots[bar];
+                if (id) drawFigure(PE.$('pvFig'), byId[id].points); else PE.$('pvFig').getContext('2d').clearRect(0, 0, 300, 400);
+                PE.$('pvName').textContent = id ? byId[id].name : '쉬기';
+                const nx = slots[bar + 1]; PE.$('pvNext').textContent = bar + 1 < SLOTS ? `다음: ${nx ? byId[nx].name : '쉬기'}` : '마지막 마디';
+            }
+        }
+        requestAnimationFrame(tick);
+    };
+    tick();
+};
+function stopAll() { running = null; if (drum) drum.stop(); PE.wake(false); }
+PE.$('btnPvStop').onclick = () => { stopAll(); show('editor'); };
+
+// ── 카메라 도전 ──
+async function challenge() {
+    if (!hasMoves()) return;
+    PE.$('status').textContent = '카메라와 자세 인식을 준비하는 중…';
+    try { await initPose({ numPoses: 4 }); await startCamera(video, view); }
+    catch (e) { PE.$('status').textContent = cameraErrorText(e); return; }
+    PE.$('status').textContent = '';
+    show('challenge'); PE.wake(true);
+    PE.$('bar8').innerHTML = slots.map(() => '<i></i>').join('');
+    res = slots.map(id => ({ id, acc: [], sync: [], maxPeople: 0 }));
+    drum = new DrumLoop(bpm); drum.start(0.3); running = 'challenge';
+    let lastBar = -2;
+    const loop = (now) => {
+        if (running !== 'challenge') return;
+        const people = detect(video, view, now), pos = drum.beatPos();
+        const cc = PE.$('cCount');
+        let pers = [];
+        if (pos < 4) { cc.style.display = 'block'; cc.textContent = pos < 0 ? '준비' : 4 - Math.floor(pos); }
+        else {
+            cc.style.display = 'none';
+            const bar = Math.floor((pos - 4) / 4), beatFrac = ((pos - 4) % 4) / 4;
+            if (bar >= SLOTS) { finish(); return; }
+            if (bar !== lastBar) {
+                lastBar = bar; const id = slots[bar];
+                if (id) drawFigure(PE.$('nowFig'), byId[id].points); else PE.$('nowFig').getContext('2d').clearRect(0, 0, 300, 400);
+                PE.$('nowName').textContent = id ? byId[id].name : '쉬기';
+                PE.$('bar8').querySelectorAll('i').forEach((d, k) => { d.className = k < bar ? 'done' : k === bar ? 'now' : ''; });
+            }
+            const id = slots[bar];
+            const feats = people.map(P => computeFeatures(P));
+            PE.$('peopleV').textContent = `인식된 사람 ${people.length}명`;
+            if (id) {
+                const scores = feats.map(f => scorePose(f, byId[id]));
+                pers = scores.map(s => s ? s.per : null);
+                const valid = scores.filter(Boolean).map(s => s.score);
+                const acc = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+                PE.$('accV').textContent = acc == null ? '–' : Math.round(acc);
+                // 마디 후반부(자세가 자리 잡은 뒤)만 점수로 기록
+                if (acc != null && beatFrac >= 0.4) res[bar].acc.push(acc);
+            } else PE.$('accV').textContent = '쉬기';
+            const sy = syncScore(feats);
+            PE.$('syncV').textContent = sy == null ? (people.length < 2 ? '혼자' : '–') : Math.round(sy);
+            if (sy != null && beatFrac >= 0.4) res[bar].sync.push(sy);
+            res[bar].maxPeople = Math.max(res[bar].maxPeople, people.length);
+        }
+        drawLive(view, video, people, pers);
+        requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+}
+const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+function finish() {
+    stopAll();
+    PE.tone(784, 0.2, 0.1); PE.tone(1047, 0.5, 0.3);
+    const rows = res.map((r, i) => ({ i, name: r.id ? byId[r.id].name : '쉬기', acc: avg(r.acc.sort((a, b) => b - a).slice(0, Math.max(1, Math.ceil(r.acc.length * 0.5)))), sync: avg(r.sync) }));
+    const accAll = avg(rows.map(r => r.acc).filter(v => v != null)), syncAll = avg(rows.map(r => r.sync).filter(v => v != null));
+    PE.$('rAcc').textContent = accAll == null ? '–' : Math.round(accAll);
+    PE.$('rSync').textContent = syncAll == null ? '–' : Math.round(syncAll);
+    PE.$('rMsg').textContent = syncAll == null ? '혼자 도전했어요. 모둠이 함께 서면 싱크 점수도 나와요.' : syncAll >= 80 ? '모둠의 호흡이 척척 맞았어요!' : '서로의 동작을 보며 타이밍을 맞춰 보세요.';
+    PE.$('rTable').innerHTML = '<tr><th>마디</th><th>동작</th><th>정확도</th><th>싱크</th></tr>' + rows.map(r => `<tr><td>${r.i + 1}</td><td>${PE.esc(r.name)}</td><td>${r.acc == null ? '–' : Math.round(r.acc)}</td><td>${r.sync == null ? '–' : Math.round(r.sync)}</td></tr>`).join('');
+    show('result');
+}
+PE.$('btnChallenge').onclick = challenge;
+PE.$('btnCStop').onclick = () => { stopAll(); show('editor'); };
+PE.$('btnRAgain').onclick = challenge;
+PE.$('btnREdit').onclick = () => show('editor');
+
+renderSlots(); renderPalette(); renderSaved();
+</script>
+</body>
+</html>
