@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EAIM 기록 측정</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
+        .font-title { font-family: 'Black Han Sans', sans-serif; }
+        .clock { font-family: 'Black Han Sans', sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .hit { animation: hit 0.25s ease-out; }
+        @keyframes hit { 0% { transform: scale(0.93); } 100% { transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .animate-fadeIn, .hit { animation: none; } }
+        button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #fb923c; outline-offset: 2px; }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ───────────── 저장소 ─────────────
+const STORE = 'eaim_pe_record_v1';
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const today = () => new Date().toISOString().slice(0, 10);
+
+const DEFAULT_EVENTS = [
+    { id: 'ev50m', name: '50m 달리기', type: 'time', unit: '초', limit: 0, baseScore: 5,
+      table: [{ score: 10, cut: 7.5 }, { score: 9, cut: 8.0 }, { score: 8, cut: 8.5 }, { score: 7, cut: 9.0 }, { score: 6, cut: 9.5 }] },
+    { id: 'evrope', name: '30초 줄넘기', type: 'count', unit: '회', limit: 30, baseScore: 5,
+      table: [{ score: 10, cut: 70 }, { score: 9, cut: 60 }, { score: 8, cut: 50 }, { score: 7, cut: 40 }, { score: 6, cut: 30 }] },
+    { id: 'evdribble', name: '30초 드리블', type: 'count', unit: '회', limit: 30, baseScore: 5,
+      table: [{ score: 10, cut: 60 }, { score: 9, cut: 52 }, { score: 8, cut: 44 }, { score: 7, cut: 36 }, { score: 6, cut: 28 }] },
+    { id: 'evjump', name: '제자리멀리뛰기', type: 'count', unit: 'cm', limit: 0, baseScore: 5,
+      table: [{ score: 10, cut: 220 }, { score: 9, cut: 200 }, { score: 8, cut: 180 }, { score: 7, cut: 160 }, { score: 6, cut: 140 }] },
+];
+const DEFAULT = { className: '', students: [], events: DEFAULT_EVENTS, records: [] };
+
+const loadStore = () => {
+    try { const v = JSON.parse(localStorage.getItem(STORE)); if (v && Array.isArray(v.events)) return { ...DEFAULT, ...v }; }
+    catch (e) {}
+    return DEFAULT;
+};
+
+// ───────────── 계산 ─────────────
+const scoreOf = (ev, v) => {
+    const rows = [...ev.table].sort((a, b) => b.score - a.score);
+    for (const r of rows) if (ev.type === 'time' ? v <= r.cut : v >= r.cut) return r.score;
+    return ev.baseScore;
+};
+const fmtClock = (t) => t < 60 ? t.toFixed(2) : `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+const fmtValue = (ev, v) => ev.type === 'time' ? `${fmtClock(v)}${v < 60 ? '초' : ''}` : `${v}${ev.unit}`;
+const bestOf = (ev, vals) => vals.length ? (ev.type === 'time' ? Math.min(...vals) : Math.max(...vals)) : null;
+
+// ───────────── 소리 · 화면 켜짐 ─────────────
+let actx = null;
+const audio = () => {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+};
+const tone = (freq, dur, when = 0) => {
+    const c = audio(), o = c.createOscillator(), g = c.createGain(), t = c.currentTime + when;
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+};
+const countdownBeeps = () => { tone(880, 0.15, 0); tone(880, 0.15, 1); tone(880, 0.15, 2); tone(1320, 0.5, 3); };
+
+const useWakeLock = (on) => {
+    useEffect(() => {
+        let lock = null;
+        if (on && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { lock = l; }).catch(() => {});
+        return () => { if (lock && lock.release) lock.release(); };
+    }, [on]);
+};
+
+// 공통 시계: 음수면 카운트다운 숫자, 양수면 경과(또는 남은) 시간
+const useClock = (active, t0Ref, render) => {
+    useEffect(() => {
+        if (!active) return;
+        let raf;
+        const loop = () => { render((performance.now() - t0Ref.current) / 1000); raf = requestAnimationFrame(loop); };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+    }, [active]);
+};
+
+// ───────────── 시간 측정 (공동 출발) ─────────────
+const TimeRun = ({ ev, group, onSave, onExit }) => {
+    const [phase, setPhase] = useState('ready');   // ready → countdown → running → done
+    const [finishes, setFinishes] = useState([]);  // [{ studentId, value }]
+    const t0 = useRef(0);
+    const clockEl = useRef(null);
+    const phaseRef = useRef(phase);
+    phaseRef.current = phase;
+    useWakeLock(phase === 'countdown' || phase === 'running');
+
+    useClock(phase === 'countdown' || phase === 'running', t0, (t) => {
+        if (clockEl.current) clockEl.current.textContent = t < 0 ? String(Math.ceil(-t)) : fmtClock(t);
+        if (t >= 0 && phaseRef.current === 'countdown') { phaseRef.current = 'running'; setPhase('running'); }
+    });
+
+    const startWithSignal = () => { audio(); t0.current = performance.now() + 3000; countdownBeeps(); setPhase('countdown'); };
+    const startNow = () => { audio(); t0.current = performance.now(); tone(1320, 0.3); setPhase('running'); };
+
+    const finish = (s) => {
+        if (phase !== 'running' || finishes.some(f => f.studentId === s.id)) return;
+        const value = Math.round((performance.now() - t0.current) / 10) / 100;
+        const next = [...finishes, { studentId: s.id, value }];
+        setFinishes(next);
+        if (next.length === group.length) setPhase('done');
+    };
+
+    const nameOf = (id) => group.find(s => s.id === id)?.name;
+
+    if (phase === 'done') {
+        const sorted = [...finishes].sort((a, b) => a.value - b.value);
+        const missing = group.filter(s => !finishes.some(f => f.studentId === s.id));
+        return (
+            <div className="space-y-4 animate-fadeIn">
+                <h2 className="text-xl font-title text-center">{ev.name} 결과</h2>
+                <div className="space-y-2">
+                    {sorted.map((f, i) => (
+                        <div key={f.studentId} className="flex items-center gap-3 glass-panel p-4 rounded-2xl">
+                            <span className="w-7 text-center font-title text-orange-400">{i + 1}</span>
+                            <span className="flex-1 font-bold">{nameOf(f.studentId)}</span>
+                            <span className="clock text-lg">{fmtValue(ev, f.value)}</span>
+                            <span className="w-14 text-right font-black text-orange-400">{scoreOf(ev, f.value)}점</span>
+                        </div>
+                    ))}
+                    {missing.map(s => (
+                        <div key={s.id} className="flex items-center gap-3 bg-slate-900 p-4 rounded-2xl text-slate-500">
+                            <span className="w-7"></span><span className="flex-1">{s.name}</span><span className="text-sm">기록 없음</span>
+                        </div>
+                    ))}
+                </div>
+                <button onClick={() => onSave(finishes)} className="w-full bg-orange-600 p-4 rounded-2xl font-black text-lg">저장하고 다음 조</button>
+                <button onClick={() => { setFinishes([]); setPhase('ready'); }} className="w-full bg-slate-800 p-3 rounded-2xl text-slate-300">저장하지 않고 다시 측정</button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-5">
+            <div className="text-center">
+                <div className="text-sm text-slate-400">{ev.name}</div>
+                <div ref={clockEl} className={`clock leading-none mt-2 ${phase === 'countdown' ? 'text-8xl text-amber-400' : 'text-7xl text-white'}`}>0.00</div>
+            </div>
+
+            {phase === 'ready' && (
+                <div className="grid grid-cols-2 gap-3 animate-fadeIn">
+                    <button onClick={startWithSignal} className="bg-orange-600 p-5 rounded-2xl font-black leading-tight">신호음으로 출발<div className="text-xs font-normal opacity-80 mt-1">삐–삐–삐–삐익</div></button>
+                    <button onClick={startNow} className="bg-slate-800 border border-slate-700 p-5 rounded-2xl font-black leading-tight">지금 출발<div className="text-xs font-normal opacity-70 mt-1">깃발·호루라기와 함께</div></button>
+                </div>
+            )}
+
+            <p className="text-center text-sm text-slate-400">
+                {phase === 'running' ? '결승선에 들어오는 학생 이름을 누르세요.' : phase === 'countdown' ? '준비…' : '출발하면 이름 버튼이 켜져요.'}
+            </p>
+
+            <div className={`grid gap-3 ${group.length > 4 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {group.map(s => {
+                    const f = finishes.find(x => x.studentId === s.id);
+                    const order = f ? finishes.indexOf(f) + 1 : null;
+                    return (
+                        <button key={s.id + (f ? 'f' : '')} onPointerDown={(e) => { e.preventDefault(); finish(s); }}
+                            disabled={phase !== 'running' || !!f}
+                            className={`${f ? 'hit bg-emerald-600/25 border-emerald-500' : phase === 'running' ? 'bg-slate-800 border-orange-500 active:bg-orange-600' : 'bg-slate-900 border-slate-800 text-slate-500'} border-2 rounded-2xl p-4 min-h-[88px] text-left select-none touch-manipulation`}>
+                            <div className="font-black text-lg truncate">{s.name}</div>
+                            {f && <div className="clock text-emerald-300 text-xl">{order}등 · {fmtValue(ev, f.value)}</div>}
+                        </button>
+                    );
+                })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                <button disabled={!finishes.length} onClick={() => setFinishes(finishes.slice(0, -1))} className="bg-slate-900 border border-slate-700 disabled:opacity-40 p-3 rounded-xl text-sm">방금 누른 기록 취소</button>
+                {phase === 'running'
+                    ? <button onClick={() => setPhase('done')} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">측정 끝내기</button>
+                    : <button onClick={onExit} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">조 다시 고르기</button>}
+            </div>
+        </div>
+    );
+};
+
+// ───────────── 횟수·거리 측정 (공통 타이머 + 입력) ─────────────
+const CountRun = ({ ev, group, onSave, onExit }) => {
+    const hasTimer = ev.limit > 0;
+    const [phase, setPhase] = useState(hasTimer ? 'ready' : 'input');
+    const [vals, setVals] = useState({});
+    const t0 = useRef(0);
+    const clockEl = useRef(null);
+    const phaseRef = useRef(phase);
+    phaseRef.current = phase;
+    useWakeLock(phase === 'countdown' || phase === 'running');
+
+    useClock(phase === 'countdown' || phase === 'running', t0, (t) => {
+        if (t < 0) { if (clockEl.current) clockEl.current.textContent = String(Math.ceil(-t)); return; }
+        if (phaseRef.current === 'countdown') { phaseRef.current = 'running'; setPhase('running'); }
+        const left = Math.max(0, ev.limit - t);
+        if (clockEl.current) clockEl.current.textContent = left.toFixed(1);
+        if (left <= 0 && phaseRef.current === 'running') { phaseRef.current = 'input'; tone(1320, 0.9); setPhase('input'); }
+    });
+
+    const start = () => { audio(); t0.current = performance.now() + 3000; countdownBeeps(); setPhase('countdown'); };
+    const stop = () => { tone(660, 0.4); setPhase('input'); };
+
+    if (phase === 'input') {
+        const filled = group.filter(s => vals[s.id] !== undefined && vals[s.id] !== '' && !isNaN(parseFloat(vals[s.id])));
+        return (
+            <div className="space-y-4 animate-fadeIn">
+                <div className="text-center">
+                    <h2 className="text-xl font-title">{ev.name} 기록 입력</h2>
+                    <p className="text-sm text-slate-400 mt-1">{hasTimer ? '짝이 센 횟수를 입력하세요.' : `측정한 값을 ${ev.unit} 단위로 입력하세요.`}</p>
+                </div>
+                {group.map((s, i) => {
+                    const v = parseFloat(vals[s.id]);
+                    return (
+                        <div key={s.id} className="flex items-center gap-3 glass-panel p-3 rounded-2xl">
+                            <span className="flex-1 font-bold truncate">{s.name}</span>
+                            <input type="number" inputMode="decimal" value={vals[s.id] ?? ''} autoFocus={i === 0}
+                                onChange={e => setVals({ ...vals, [s.id]: e.target.value })}
+                                className="w-24 bg-slate-900 border border-slate-700 p-3 rounded-xl text-center clock text-xl" />
+                            <span className="w-8 text-sm text-slate-400">{ev.unit}</span>
+                            <span className="w-12 text-right font-black text-orange-400">{isNaN(v) ? '' : `${scoreOf(ev, v)}점`}</span>
+                        </div>
+                    );
+                })}
+                <button disabled={!filled.length} onClick={() => onSave(filled.map(s => ({ studentId: s.id, value: parseFloat(vals[s.id]) })))}
+                    className="w-full bg-orange-600 disabled:bg-slate-800 p-4 rounded-2xl font-black text-lg">저장하고 다음 조</button>
+                <button onClick={onExit} className="w-full bg-slate-800 p-3 rounded-2xl text-slate-300">저장하지 않고 나가기</button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6 text-center">
+            <div className="text-sm text-slate-400">{ev.name} · {ev.limit}초</div>
+            <div ref={clockEl} className={`clock leading-none ${phase === 'countdown' ? 'text-8xl text-amber-400' : 'text-8xl text-white'}`}>{ev.limit.toFixed(1)}</div>
+            <div className="flex flex-wrap justify-center gap-2">
+                {group.map(s => <span key={s.id} className="bg-slate-800 px-3 py-1.5 rounded-full text-sm">{s.name}</span>)}
+            </div>
+            {phase === 'ready' && <button onClick={start} className="w-full bg-orange-600 p-5 rounded-2xl font-black text-lg">신호음으로 시작</button>}
+            {phase === 'running' && <button onClick={stop} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-2xl">중간에 멈추기</button>}
+            {phase === 'ready' && <button onClick={onExit} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm">조 다시 고르기</button>}
+        </div>
+    );
+};
+
+// ───────────── 측정 탭 ─────────────
+const MeasureTab = ({ data, addRecords, goSettings }) => {
+    const [evId, setEvId] = useState(null);
+    const [size, setSize] = useState(5);
+    const [sel, setSel] = useState([]);
+    const [running, setRunning] = useState(false);
+    const ev = data.events.find(e => e.id === evId);
+
+    if (!data.students.length) return (
+        <div className="text-center py-16 space-y-4">
+            <div className="text-6xl">⏱️</div>
+            <p className="text-slate-300">먼저 학생 명단을 넣어 주세요.</p>
+            <button onClick={goSettings} className="bg-orange-600 px-6 py-3 rounded-2xl font-bold">명단 넣으러 가기</button>
+        </div>
+    );
+
+    if (!ev) return (
+        <div className="space-y-4 animate-fadeIn">
+            <h2 className="text-2xl font-title">어떤 종목을 잴까요?</h2>
+            {data.events.map(e => (
+                <button key={e.id} onClick={() => { setEvId(e.id); setSel([]); }} className="w-full glass-panel p-5 rounded-2xl text-left hover:border-orange-500 transition-colors">
+                    <div className="font-black text-lg">{e.name}</div>
+                    <div className="text-sm text-slate-400 mt-1">
+                        {e.type === 'time' ? '공동 출발 · 이름을 눌러 도착 기록' : e.limit > 0 ? `${e.limit}초 타이머 · 끝나고 횟수 입력` : `측정값 입력 (${e.unit})`}
+                    </div>
+                </button>
+            ))}
+        </div>
+    );
+
+    const doneToday = new Set(data.records.filter(r => r.eventId === ev.id && r.date === today()).map(r => r.studentId));
+    const group = data.students.filter(s => sel.includes(s.id));
+
+    if (running) {
+        const save = (results) => {
+            addRecords(results.map(r => ({ id: uid(), eventId: ev.id, studentId: r.studentId, value: r.value, date: today() })));
+            // 다음 조 자동 선택
+            const done = new Set([...doneToday, ...results.map(r => r.studentId)]);
+            setSel(data.students.filter(s => !done.has(s.id)).slice(0, size).map(s => s.id));
+            setRunning(false);
+        };
+        const Run = ev.type === 'time' ? TimeRun : CountRun;
+        return <Run ev={ev} group={group} onSave={save} onExit={() => setRunning(false)} />;
+    }
+
+    const autoPick = () => setSel(data.students.filter(s => !doneToday.has(s.id)).slice(0, size).map(s => s.id));
+    const toggle = (id) => setSel(sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
+
+    return (
+        <div className="space-y-5 animate-fadeIn">
+            <button onClick={() => setEvId(null)} className="text-sm text-slate-400">← 종목 다시 고르기</button>
+            <h2 className="text-2xl font-title">{ev.name} · 조 편성</h2>
+
+            <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400 mr-1">한 조</span>
+                {[1, 4, 5, 6, 8].map(n => (
+                    <button key={n} onClick={() => setSize(n)} className={`w-10 h-10 rounded-full text-sm font-bold ${size === n ? 'bg-orange-600' : 'bg-slate-800 text-slate-300'}`}>{n}</button>
+                ))}
+            </div>
+            <button onClick={autoPick} className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-sm font-bold">오늘 아직 안 잰 학생 {size}명 자동 선택</button>
+
+            <div className="flex flex-wrap gap-2">
+                {data.students.map(s => (
+                    <button key={s.id} onClick={() => toggle(s.id)}
+                        className={`px-3 py-2 rounded-full text-sm border ${sel.includes(s.id) ? 'bg-orange-600 border-orange-500 font-bold' : doneToday.has(s.id) ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-slate-800 border-slate-700'}`}>
+                        {doneToday.has(s.id) && !sel.includes(s.id) ? '✓ ' : ''}{s.name}
+                    </button>
+                ))}
+            </div>
+            <p className="text-xs text-slate-500">✓ 표시는 오늘 이미 측정한 학생이에요. 다시 재면 기록이 추가되고, 최고 기록이 점수로 반영돼요.</p>
+
+            <button disabled={!group.length} onClick={() => setRunning(true)} className="w-full bg-orange-600 disabled:bg-slate-800 disabled:text-slate-600 p-5 rounded-2xl font-black text-lg sticky bottom-24">
+                {group.length ? `${group.length}명 측정 시작` : '학생을 골라 주세요'}
+            </button>
+        </div>
+    );
+};
+
+// ───────────── 기록 탭 ─────────────
+const RecordsTab = ({ data, setData }) => {
+    const [evId, setEvId] = useState(data.events[0]?.id);
+    const ev = data.events.find(e => e.id === evId) || data.events[0];
+    if (!ev) return <p className="text-center text-slate-400 py-16">종목이 없어요. 설정에서 종목을 추가해 주세요.</p>;
+
+    const rows = data.students.map(s => {
+        const vals = data.records.filter(r => r.eventId === ev.id && r.studentId === s.id).map(r => r.value);
+        const best = bestOf(ev, vals);
+        return { s, best, count: vals.length, score: best === null ? null : scoreOf(ev, best) };
+    });
+    const measured = rows.filter(r => r.best !== null);
+    const avg = measured.length ? (measured.reduce((a, r) => a + r.score, 0) / measured.length).toFixed(1) : '-';
+
+    const exportCSV = () => {
+        const head = ['이름', ...data.events.flatMap(e => [`${e.name} 최고기록(${e.type === 'time' ? '초' : e.unit})`, `${e.name} 점수`])];
+        const lines = data.students.map(s => [s.name, ...data.events.flatMap(e => {
+            const b = bestOf(e, data.records.filter(r => r.eventId === e.id && r.studentId === s.id).map(r => r.value));
+            return b === null ? ['', ''] : [b, scoreOf(e, b)];
+        })]);
+        const csv = '\uFEFF' + [head, ...lines].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = `${data.className || '기록'}_${today()}.csv`;
+        a.click();
+    };
+
+    const clearEvent = () => {
+        if (!confirm(`'${ev.name}' 기록을 모두 지울까요? 되돌릴 수 없어요.`)) return;
+        setData({ ...data, records: data.records.filter(r => r.eventId !== ev.id) });
+    };
+
+    return (
+        <div className="space-y-4 animate-fadeIn">
+            <h2 className="text-2xl font-title">{data.className || '우리 반'} 기록</h2>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+                {data.events.map(e => (
+                    <button key={e.id} onClick={() => setEvId(e.id)} className={`shrink-0 px-4 py-2 rounded-full text-sm ${e.id === ev.id ? 'bg-orange-600 font-bold' : 'bg-slate-800 text-slate-300'}`}>{e.name}</button>
+                ))}
+            </div>
+            <div className="flex justify-between text-sm text-slate-400">
+                <span>측정 {measured.length} / {data.students.length}명</span>
+                <span>평균 {avg}점</span>
+            </div>
+            <div className="rounded-2xl overflow-hidden border border-slate-800">
+                <table className="w-full text-sm">
+                    <thead className="bg-slate-900 text-slate-400">
+                        <tr><th className="p-3 text-left font-normal">이름</th><th className="p-3 text-right font-normal">최고 기록</th><th className="p-3 text-right font-normal">점수</th></tr>
+                    </thead>
+                    <tbody>
+                        {rows.map(({ s, best, count, score }) => (
+                            <tr key={s.id} className="border-t border-slate-800">
+                                <td className="p-3">{s.name}</td>
+                                <td className="p-3 text-right clock">{best === null ? <span className="text-slate-600">–</span> : <>{fmtValue(ev, best)}{count > 1 && <span className="text-xs text-slate-500 ml-1">({count}회)</span>}</>}</td>
+                                <td className="p-3 text-right font-black text-orange-400">{score ?? ''}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <button onClick={exportCSV} className="w-full bg-orange-600 p-4 rounded-2xl font-bold">전체 기록 엑셀(CSV)로 내보내기</button>
+            <button onClick={clearEvent} className="w-full text-sm text-slate-500 underline py-2">이 종목 기록 모두 지우기</button>
+        </div>
+    );
+};
+
+// ───────────── 종목 편집 ─────────────
+const EventEditor = ({ ev, onSave, onCancel, onDelete }) => {
+    const [d, setD] = useState(() => JSON.parse(JSON.stringify(ev)));
+    const set = (k, v) => setD({ ...d, [k]: v });
+    const setRow = (i, k, v) => set('table', d.table.map((r, j) => j === i ? { ...r, [k]: v } : r));
+    const unit = d.type === 'time' ? '초' : d.unit;
+    const valid = d.name.trim() && d.table.every(r => r.score !== '' && r.cut !== '' && !isNaN(parseFloat(r.score)) && !isNaN(parseFloat(r.cut)));
+
+    const save = () => onSave({
+        ...d, name: d.name.trim(), unit: d.type === 'time' ? '초' : (d.unit.trim() || '회'),
+        limit: d.type === 'time' ? 0 : (parseInt(d.limit) || 0), baseScore: parseFloat(d.baseScore) || 0,
+        table: d.table.map(r => ({ score: parseFloat(r.score), cut: parseFloat(r.cut) })).sort((a, b) => b.score - a.score),
+    });
+
+    return (
+        <div className="glass-panel p-5 rounded-3xl space-y-4 animate-fadeIn">
+            <input value={d.name} onChange={e => set('name', e.target.value)} placeholder="종목 이름" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl font-bold" />
+            <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => set('type', 'time')} className={`p-3 rounded-xl text-sm border ${d.type === 'time' ? 'bg-orange-600 border-orange-500 font-bold' : 'bg-slate-900 border-slate-700'}`}>시간<div className="text-xs opacity-80">짧을수록 높은 점수</div></button>
+                <button onClick={() => set('type', 'count')} className={`p-3 rounded-xl text-sm border ${d.type === 'count' ? 'bg-orange-600 border-orange-500 font-bold' : 'bg-slate-900 border-slate-700'}`}>횟수·거리<div className="text-xs opacity-80">많을수록 높은 점수</div></button>
+            </div>
+            {d.type === 'count' && (
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs text-slate-400">단위<input value={d.unit} onChange={e => set('unit', e.target.value)} placeholder="회, cm, m" className="mt-1 w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm text-white" /></label>
+                    <label className="text-xs text-slate-400">타이머(초, 없으면 0)<input type="number" inputMode="numeric" value={d.limit} onChange={e => set('limit', e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm text-white" /></label>
+                </div>
+            )}
+
+            <div className="space-y-2">
+                <div className="text-sm font-bold text-orange-400">점수 환산표</div>
+                {d.table.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                        <input type="number" inputMode="decimal" value={r.cut} onChange={e => setRow(i, 'cut', e.target.value)} className="w-20 bg-slate-900 border border-slate-700 p-2 rounded-lg text-center" />
+                        <span className="text-slate-400 shrink-0">{unit} {d.type === 'time' ? '이하' : '이상'} →</span>
+                        <input type="number" inputMode="decimal" value={r.score} onChange={e => setRow(i, 'score', e.target.value)} className="w-16 bg-slate-900 border border-slate-700 p-2 rounded-lg text-center" />
+                        <span className="text-slate-400">점</span>
+                        <button onClick={() => set('table', d.table.filter((_, j) => j !== i))} className="ml-auto text-slate-500 px-2" aria-label="이 줄 삭제">✕</button>
+                    </div>
+                ))}
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="text-slate-400">그 외 기록 →</span>
+                    <input type="number" inputMode="decimal" value={d.baseScore} onChange={e => set('baseScore', e.target.value)} className="w-16 bg-slate-900 border border-slate-700 p-2 rounded-lg text-center" />
+                    <span className="text-slate-400">점 (기본 점수)</span>
+                </div>
+                <button onClick={() => set('table', [...d.table, { score: '', cut: '' }])} className="text-sm text-orange-400">+ 줄 추가</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                <button onClick={onCancel} className="bg-slate-800 p-3 rounded-xl text-sm">취소</button>
+                <button disabled={!valid} onClick={save} className="bg-orange-600 disabled:bg-slate-800 p-3 rounded-xl text-sm font-bold">저장</button>
+            </div>
+            {onDelete && <button onClick={onDelete} className="w-full text-xs text-slate-500 underline">이 종목 삭제</button>}
+        </div>
+    );
+};
+
+// ───────────── 설정 탭 ─────────────
+const SettingsTab = ({ data, setData }) => {
+    const [cls, setCls] = useState(data.className);
+    const [roster, setRoster] = useState(data.students.map(s => s.name).join('\n'));
+    const [editing, setEditing] = useState(null);   // event id | 'new'
+    const [saved, setSaved] = useState(false);
+
+    const saveRoster = () => {
+        const names = roster.split('\n').map(x => x.trim()).filter(Boolean);
+        const byName = new Map(data.students.map(s => [s.name, s]));
+        const students = names.map(n => byName.get(n) || { id: uid(), name: n });
+        setData({ ...data, className: cls.trim(), students });
+        setSaved(true); setTimeout(() => setSaved(false), 1500);
+    };
+
+    const saveEvent = (ev) => {
+        const exists = data.events.some(e => e.id === ev.id);
+        setData({ ...data, events: exists ? data.events.map(e => e.id === ev.id ? ev : e) : [...data.events, ev] });
+        setEditing(null);
+    };
+    const deleteEvent = (ev) => {
+        if (!confirm(`'${ev.name}' 종목과 그 기록을 삭제할까요?`)) return;
+        setData({ ...data, events: data.events.filter(e => e.id !== ev.id), records: data.records.filter(r => r.eventId !== ev.id) });
+        setEditing(null);
+    };
+
+    return (
+        <div className="space-y-8 animate-fadeIn">
+            <section className="space-y-3">
+                <h2 className="text-2xl font-title">학생 명단</h2>
+                <input value={cls} onChange={e => setCls(e.target.value)} placeholder="반 이름 (예: 2학년 3반)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl" />
+                <textarea value={roster} onChange={e => setRoster(e.target.value)} placeholder={'한 줄에 한 명씩\n1 김민준\n2 이서연'} className="w-full h-48 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm leading-relaxed" />
+                <p className="text-xs text-slate-500">엑셀이나 나이스 명렬표에서 이름 열을 복사해 붙여넣어도 돼요.</p>
+                <button onClick={saveRoster} className="w-full bg-orange-600 p-3 rounded-xl font-bold">{saved ? '저장했어요 ✓' : `명단 저장 (${roster.split('\n').filter(x => x.trim()).length}명)`}</button>
+            </section>
+
+            <section className="space-y-3">
+                <h2 className="text-2xl font-title">종목과 환산표</h2>
+                <p className="text-xs text-slate-500">처음 들어 있는 기준은 예시예요. 학교 평가계획에 맞게 고쳐서 쓰세요.</p>
+                {data.events.map(ev => editing === ev.id
+                    ? <EventEditor key={ev.id} ev={ev} onSave={saveEvent} onCancel={() => setEditing(null)} onDelete={() => deleteEvent(ev)} />
+                    : (
+                        <button key={ev.id} onClick={() => setEditing(ev.id)} className="w-full flex justify-between items-center bg-slate-900 border border-slate-800 p-4 rounded-2xl text-left">
+                            <div>
+                                <div className="font-bold">{ev.name}</div>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                    {[...ev.table].sort((a, b) => b.score - a.score).slice(0, 3).map(r => `${r.cut}${ev.type === 'time' ? '초' : ev.unit}→${r.score}점`).join(', ')}…
+                                </div>
+                            </div>
+                            <span className="text-sm text-orange-400 shrink-0 ml-2">고치기</span>
+                        </button>
+                    ))}
+                {editing === 'new'
+                    ? <EventEditor ev={{ id: uid(), name: '', type: 'time', unit: '초', limit: 0, baseScore: 5, table: [{ score: 10, cut: '' }, { score: 8, cut: '' }, { score: 6, cut: '' }] }} onSave={saveEvent} onCancel={() => setEditing(null)} />
+                    : <button onClick={() => setEditing('new')} className="w-full border-2 border-dashed border-slate-700 p-4 rounded-2xl text-slate-400">+ 새 종목 만들기</button>}
+            </section>
+
+            <section className="space-y-2">
+                <h2 className="text-lg font-title text-slate-400">데이터</h2>
+                <p className="text-xs text-slate-500">명단과 기록은 이 휴대폰에만 저장돼요. 기록은 기록 탭에서 엑셀로 내보낼 수 있어요.</p>
+                <button onClick={() => { if (confirm('명단, 종목, 기록을 모두 지우고 처음 상태로 돌릴까요?')) setData(DEFAULT); }} className="text-xs text-slate-500 underline">전체 초기화</button>
+            </section>
+        </div>
+    );
+};
+
+// ───────────── 앱 ─────────────
+const App = () => {
+    const [data, setDataState] = useState(loadStore);
+    const [tab, setTab] = useState('measure');
+    const setData = (d) => { setDataState(d); try { localStorage.setItem(STORE, JSON.stringify(d)); } catch (e) { alert('저장 공간이 부족해요. 기록을 내보낸 뒤 오래된 기록을 지워 주세요.'); } };
+    const addRecords = (recs) => setData({ ...data, records: [...data.records, ...recs] });
+
+    const tabs = [['measure', '⏱️', '측정'], ['records', '📋', '기록'], ['settings', '⚙️', '설정']];
+
+    return (
+        <div className="max-w-md mx-auto min-h-screen bg-slate-950 flex flex-col shadow-2xl">
+            <header className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/90 sticky top-0 z-40">
+                <h1 className="text-lg font-title text-orange-500">EAIM 기록 측정</h1>
+                {data.className && <span className="text-xs text-slate-400">{data.className}</span>}
+            </header>
+
+            <main className="flex-grow p-5 pb-28">
+                {tab === 'measure' && <MeasureTab key="m" data={data} addRecords={addRecords} goSettings={() => setTab('settings')} />}
+                {tab === 'records' && <RecordsTab data={data} setData={setData} />}
+                {tab === 'settings' && <SettingsTab data={data} setData={setData} />}
+            </main>
+
+            <nav className="fixed bottom-0 left-0 right-0 z-40">
+                <div className="max-w-md mx-auto grid grid-cols-3 bg-slate-900/95 border-t border-slate-800" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    {tabs.map(([id, icon, label]) => (
+                        <button key={id} onClick={() => setTab(id)} className={`py-3 text-center ${tab === id ? 'text-orange-400' : 'text-slate-500'}`}>
+                            <div className="text-xl">{icon}</div><div className="text-xs font-bold">{label}</div>
+                        </button>
+                    ))}
+                </div>
+            </nav>
+        </div>
+    );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
