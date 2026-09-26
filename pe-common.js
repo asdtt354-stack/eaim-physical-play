@@ -76,7 +76,7 @@ const PE = (() => {
         move('eaim_basket_library_v1', 'eaim_pe_basket_songs_v1'); // 선생님 추천곡
         localStorage.removeItem('gemini_api_key_basket_pro');     // 브라우저에 넣었던 Gemini 키
         localStorage.removeItem('eaim_gemini_key');
-        // 건강체력: 이름과 체육고 모드의 수면·컨디션·근육 뻐근함 칸 지움
+        // 건강체력: 이름과 운동부(훈련 일지) 모드의 수면·컨디션·근육 뻐근함 칸 지움
         const fit = JSON.parse(localStorage.getItem('eaim_pe_fitness_v1') || 'null');
         if (fit && typeof fit === 'object') {
             if (fit.profile) fit.profile = { mode: fit.profile.mode === 'athlete' ? 'athlete' : 'general' };
