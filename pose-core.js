@@ -1,5 +1,7 @@
-// EAIM 포즈 인식 공통 모듈
-// 스트레칭 따라하기 앱에서 선생님이 녹화한 동작(eaim_pose_stretch_v1)을 함께 사용해요.
+// EAIM 포즈 인식 공통 모듈  pose-core.js  v2.0 (2026-09-26)
+// - 영상은 이 기기 안에서만 자세(관절 위치)를 읽는 데 쓰고, 저장하거나 보내지 않아요.
+// - 인식 프로그램(@mediapipe/tasks-vision)과 모델 파일은 처음 한 번 인터넷에서 받아 와요(받기만 함).
+// - 동작 목록: 수업 QR 로 들어오면 그 수업 방의 선생님 시범 동작(pe.poses), 아니면 이 기기 동작(eaim_pe_poses_v1), 없으면 기본 5개.
 import { PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 
 export const IDX = { nose: 0, ls: 11, rs: 12, le: 13, re: 14, lw: 15, rw: 16, lh: 23, rh: 24, lk: 25, rk: 26, la: 27, ra: 28 };
@@ -65,9 +67,18 @@ export const DEFAULT_POSES = [
 ].map(p => ({ id: p.id, name: p.name, builtin: true, points: toImage(p.disp), weights: p.weights }));
 
 export const loadPoses = () => {
-    try { const v = JSON.parse(localStorage.getItem('eaim_pose_stretch_v1')); if (Array.isArray(v) && v.length) return v; } catch (e) {}
+    try { const v = JSON.parse(localStorage.getItem('eaim_pe_poses_v1')); if (Array.isArray(v) && v.length) return v; } catch (e) {}
     return JSON.parse(JSON.stringify(DEFAULT_POSES));
 };
+// 수업 연결이 준비된 뒤의 동작 목록 (수업 방 동작 우선)
+export async function posesNow() {
+    const st = window.PEClass ? await window.PEClass.ready : { mode: 'public' };
+    if (st.mode === 'class') {
+        const rp = window.PEClass.content('poses');
+        return rp && rp.length ? JSON.parse(JSON.stringify(rp)) : JSON.parse(JSON.stringify(DEFAULT_POSES));
+    }
+    return loadPoses();
+}
 
 const tcache = new WeakMap();
 export const targetOf = (pose) => { if (!tcache.has(pose)) tcache.set(pose, computeFeatures(pose.points)); return tcache.get(pose); };
@@ -161,6 +172,8 @@ export async function initPose({ numPoses = 1 } = {}) {
 }
 export async function startCamera(video, canvas) {
     if (video.srcObject) return;
+    // 처음 켤 때 안내 창 (영상은 기기 안에서만, 저장 안 함) — 체육 부록 4번
+    if (typeof PE !== 'undefined' && PE.cameraOk && !(await PE.cameraOk())) throw Object.assign(new Error('카메라를 켜지 않음'), { name: 'Declined' });
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     video.srcObject = stream; await video.play();
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
@@ -176,9 +189,11 @@ export const detect = (video, canvas, now) => {
         return P;
     }).sort((a, b) => b.nose.x - a.nose.x);
 };
-export const cameraErrorText = (e) => e && e.name === 'NotAllowedError'
+export const cameraErrorText = (e) => e && e.name === 'Declined'
+    ? '카메라를 켜지 않았어요. 준비되면 다시 눌러 주세요.'
+    : e && e.name === 'NotAllowedError'
     ? '카메라 권한이 막혀 있어요. 주소창 옆 자물쇠 아이콘에서 카메라를 허용해 주세요.'
-    : '카메라나 인식 모델을 켜지 못했어요. 인터넷 연결과 https 주소(GitHub Pages)인지 확인해 주세요.';
+    : '카메라나 인식 프로그램을 켜지 못했어요. 인터넷 연결과, 학교 인터넷이 인식 프로그램 주소를 막고 있지 않은지 확인해 주세요.';
 
 // ── 드럼 반주 (저작권 걱정 없는 기본 비트) ──
 export class DrumLoop {

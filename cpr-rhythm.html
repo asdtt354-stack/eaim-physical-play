@@ -88,6 +88,7 @@
 </div>
 
 <script src="pe-common.js"></script>
+<script type="module" src="pe-class.js"></script>
 <script>
 let mode = 'hands', guide = true, bpm = 110;
 let taps = [], total = 0, setCount = 0, inSet = 0, phase = 'idle', t0 = 0, endAt = 0, raf = null, metro = null, breathUntil = 0;
@@ -190,6 +191,11 @@ function finish() {
         <tr><th>일정함 (흔들림)</th><td>${insts.length ? (sd < 8 ? '아주 일정함' : sd < 15 ? '일정한 편' : '들쭉날쭉함') : '–'}</td></tr>
         <tr><th>연습 방법</th><td>${mode === 'hands' ? '가슴압박만 2분' : '30:2 · 5세트'} · ${guide ? '박자 소리 있음' : '소리 없이'}</td></tr>`;
     PE.$('run').classList.add('hidden'); PE.$('result').classList.remove('hidden');
+    if (window.PEClass && PEClass.inClass() && insts.length) {
+        PEClass.saveResult({ game: 'cpr-' + (mode === 'hands' ? 'hands' : '30-2') + (guide ? '' : '-silent'), score: goodPct, correct: good, total: insts.length,
+            detail: { presses: total, avgRate: avg ? Math.round(avg) : null, fast, slow, steady: sd ? Math.round(sd) : null, guide } })
+            .then(r => { PE.$('rMsg').textContent += r.ok ? ' (선생님께 보냈어요 ✓)' : ' (' + r.reason + ')'; });
+    }
 }
 
 PE.$('btnStart').onclick = start;
@@ -197,7 +203,7 @@ PE.$('btnAgain').onclick = start;
 PE.$('btnBack').onclick = () => { PE.$('result').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); };
 PE.$('btnStop').onclick = () => { if (taps.length) finish(); else { phase = 'idle'; stopMetro(); cancelAnimationFrame(raf); PE.$('run').classList.add('hidden'); PE.$('setup').classList.remove('hidden'); } };
 PE.$('pad').addEventListener('pointerdown', (e) => { e.preventDefault(); press(); });
-window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !PE.$('run').classList.contains('hidden')) { e.preventDefault(); if (!e.repeat) press(); } });
+window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !PE.typing(e) && !PE.$('run').classList.contains('hidden')) { e.preventDefault(); if (!e.repeat) press(); } });
 </script>
 </body>
 </html>

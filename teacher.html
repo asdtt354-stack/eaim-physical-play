@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark only">
+<meta name="theme-color" content="#020617">
+<title>EAIM 체육 교사 페이지</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="pe-common.css">
+<style>
+    .room { border-left: 5px solid var(--accent); }
+    .room.closed { border-left-color: #475569; opacity: .85; }
+    .code { font-family: 'Black Han Sans', sans-serif; font-size: 26px; letter-spacing: 3px; color: var(--accent); }
+    .qr { background: #fff; border-radius: 12px; padding: 8px; width: 200px; height: 200px; }
+    .qr img { width: 100%; height: 100%; display: block; }
+    .link { font-size: 12px; color: var(--muted); word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-top: 1px solid var(--line); padding: 7px 6px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 400; }
+    .scroll { overflow-x: auto; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #1e293b; }
+    .pill.ok { background: rgba(34,197,94,.18); color: #86efac; }
+    .pill.no { background: rgba(239,68,68,.18); color: #fca5a5; }
+    .reply { width: 100%; min-height: 70px; margin-top: 6px; }
+    .q-item { border-top: 1px solid var(--line); padding: 8px 0; font-size: 14px; }
+    label.lab { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 480px) { .grid2 { grid-template-columns: 1fr; } .qr { width: 170px; height: 170px; } }
+</style>
+</head>
+<body>
+<header class="bar"><h1>🧑‍🏫 체육 교사 페이지</h1><span class="row" style="gap:8px"><span class="muted small-text" id="who"></span><button class="small hidden" id="btnOut">로그아웃</button><a href="index.html">← 체육 플랫폼</a></span></header>
+<div class="wrap wide stack">
+    <section id="loginBox" class="card stack">
+        <h2>선생님 로그인</h2>
+        <p class="muted" style="margin:0">구글 계정으로 들어와 수업 방을 열고 닫아요. 브라우저를 닫으면 자동으로 로그아웃돼요(학교 공용 컴퓨터 보호).</p>
+        <button class="primary" id="btnLogin" disabled>준비 중…</button>
+        <p class="muted small-text" id="loginErr" style="margin:0"></p>
+    </section>
+
+    <div id="main" class="hidden stack">
+        <section class="card stack">
+            <div class="row"><h3 class="grow" style="margin:0">🤖 AI 연결</h3><span id="aiState" class="pill">확인 중…</span></div>
+            <p class="muted small-text" style="margin:0">체육에서 AI 는 이 교사 페이지에서만 써요(학생 소감에 답장 초안 받기). 학생 화면에는 AI 가 없어요.</p>
+            <details>
+                <summary style="cursor:pointer" class="small-text">내 Gemini 키 넣기 (운영자 키를 쓰지 않는 선생님)</summary>
+                <div class="stack" style="margin-top:10px">
+                    <p class="muted small-text" style="margin:0">키는 서버에서만 쓰고 학생 기기로 내려가지 않아요. 키에는 <b>API 제한(Generative Language API)과 하루 한도만</b> 걸고, 웹사이트 제한은 걸지 마세요(서버에서 부르면 막혀요). 이 설정은 같은 계정의 다른 EAIM 교과 앱과 함께 쓰는 값이에요.</p>
+                    <div class="row"><input type="password" id="keyIn" class="grow" placeholder="Gemini API 키" autocomplete="off"><button id="btnKey">저장</button></div>
+                    <p class="muted small-text" id="keyMsg" style="margin:0"></p>
+                </div>
+            </details>
+        </section>
+
+        <section class="card stack">
+            <h3 style="margin:0">새 체육 수업 방</h3>
+            <p class="muted small-text" style="margin:0">수업 방 하나로 여러 앱을 써요. 앱마다 QR 을 따로 띄워 학생을 들여보내요. 선생님 자료(시범 동작·추천곡·퀴즈 문제)는 가장 최근 수업 방에서 자동으로 이어받아요.</p>
+            <div class="grid2">
+                <input id="rTitle" placeholder="수업 이름 (예: 2학년 리듬 농구)">
+                <input id="rClasses" placeholder="반 목록 (선택, 예: 2-1, 2-3)">
+            </div>
+            <button class="primary" id="btnCreate">수업 방 만들기</button>
+            <p class="muted small-text" id="createMsg" style="margin:0"></p>
+        </section>
+
+        <div class="row"><h2 class="grow" style="margin:0">내 체육 수업 방</h2><button class="small" id="btnReload">새로고침</button></div>
+        <div id="rooms" class="stack"></div>
+    </div>
+</div>
+
+<script type="module">
+window.EAIM_PLATFORM = 'pe';
+window.EAIM_APP_TYPE = 'pe';
+const APPS = {
+    basket:  ['eaim-beat-basket-3.html', '🏀 비트 & 바스켓', '소감 → 결과물'],
+    stretch: ['eaim-pose-stretch.html', '🧘 스트레칭 따라하기', '일치도 → 점수'],
+    rhythm:  ['rhythm-pose.html', '🎵 리듬 포즈 게임', '점수'],
+    dance:   ['dance-maker.html', '💃 창작 안무 만들기', '안무 → 결과물'],
+    tactics: ['tactics-board.html', '📋 전술 보드', '작전 → 결과물'],
+    referee: ['referee-quiz.html', '🙋 심판 판정 퀴즈', '점수'],
+    cpr:     ['cpr-rhythm.html', '❤️ 가슴압박 박자 연습', '도전 결과 → 점수'],
+};
+window.EAIM_APP_FILES = Object.fromEntries(Object.entries(APPS).map(([k, v]) => [k, v[0]]));
+const SPORTS = { basketball: '🏀 농구', soccer: '⚽ 축구', volleyball: '🏐 배구', badminton: '🏸 배드민턴' };
+
+const core = await import('./shared/eaim-classroom-core.js');
+const fs = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+const AI = await import('./pe-ai.js');
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const when = (t) => { const d = t?.toDate ? t.toDate() : (t?.seconds ? new Date(t.seconds * 1000) : null); return d ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : ''; };
+let me = null, rooms = [];
+
+// 예전 기기 저장 키 정리 (교사 페이지에서도)
+try { localStorage.removeItem('eaim_gemini_key'); localStorage.removeItem('gemini_api_key_basket_pro'); } catch (e) {}
+
+$('btnLogin').disabled = false; $('btnLogin').textContent = '구글 로그인';
+$('btnLogin').onclick = () => core.teacherLogin().catch(e => { $('loginErr').textContent = '로그인하지 못했어요: ' + (e.code || e.message); });
+$('btnOut').onclick = () => core.teacherLogout();
+core.onTeacherAuthChange(async (u) => {
+    me = u && !u.isAnonymous ? u : null;
+    $('loginBox').classList.toggle('hidden', !!me);
+    $('main').classList.toggle('hidden', !me);
+    $('btnOut').classList.toggle('hidden', !me);
+    $('who').textContent = me ? (me.email || '') : '';
+    if (me) { checkAI(); loadRooms(); }
+});
+
+async function checkAI() {
+    $('aiState').textContent = '확인 중…'; $('aiState').className = 'pill';
+    const p = await AI.ping(me.uid);
+    $('aiState').textContent = p.ok ? 'AI 연결됨' : 'AI 안 됨';
+    $('aiState').className = 'pill ' + (p.ok ? 'ok' : 'no');
+    $('aiState').title = p.reason || '';
+    if (!p.ok) $('keyMsg').textContent = p.reason;
+}
+$('btnKey').onclick = async () => {
+    const k = $('keyIn').value.trim(); if (!k) return;
+    try {
+        await fs.setDoc(fs.doc(core.db, `teachers/${me.uid}/meta/settings`), { apiKey: k }, { merge: true });
+        $('keyIn').value = ''; $('keyMsg').textContent = '저장했어요. 30초쯤 뒤에 연결 상태가 바뀌어요.';
+        setTimeout(checkAI, 31000);
+    } catch (e) { $('keyMsg').textContent = '저장하지 못했어요: ' + (e.code || e.message); }
+};
+
+$('btnCreate').onclick = async () => {
+    const title = $('rTitle').value.trim() || '체육 수업';
+    const classes = $('rClasses').value.split(/[,\s]+/).map(s => s.trim()).filter(s => /^\d-\d{1,2}$/.test(s));
+    $('btnCreate').disabled = true; $('createMsg').textContent = '만드는 중…';
+    try {
+        const { roomId } = await core.createRoom({ title, mode: 'class', classes });
+        const last = [...rooms].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).find(r => r.pe);
+        if (last && last.pe) await fs.updateDoc(fs.doc(core.db, `teachers/${me.uid}/rooms/${roomId}`), { pe: last.pe });
+        $('rTitle').value = ''; $('rClasses').value = '';
+        $('createMsg').textContent = last && last.pe ? '만들었어요. 선생님 자료를 지난 수업 방에서 이어받았어요.' : '만들었어요.';
+        await loadRooms(roomId);
+    } catch (e) { $('createMsg').textContent = '만들지 못했어요: ' + (e.code || e.message); }
+    $('btnCreate').disabled = false;
+};
+$('btnReload').onclick = () => loadRooms();
+
+async function loadRooms(openId) {
+    try { rooms = (await core.listMyRooms()).filter(r => r.platform === 'pe'); }
+    catch (e) { $('rooms').innerHTML = `<p class="muted">수업 방을 불러오지 못했어요: ${esc(e.code || e.message)}</p>`; return; }
+    rooms.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    $('rooms').innerHTML = rooms.length ? '' : '<p class="muted">아직 수업 방이 없어요. 위에서 만들어 주세요.</p>';
+    rooms.forEach(r => $('rooms').appendChild(roomCard(r, r.id === openId)));
+}
+
+function roomCard(r, open) {
+    const el = document.createElement('details');
+    el.className = 'card room' + (r.isOpen ? '' : ' closed');
+    el.open = open || rooms.length === 1;
+    const pe = r.pe || {};
+    el.innerHTML = `
+        <summary style="cursor:pointer" class="row"><b class="grow">${esc(r.title || '체육 수업')}</b><span class="code">${esc(r.code || '')}</span><span class="pill ${r.isOpen ? 'ok' : 'no'}">${r.isOpen ? '열림' : '닫힘'}</span></summary>
+        <div class="stack" style="margin-top:12px">
+            <div class="row"><button class="small" data-act="toggle">${r.isOpen ? '수업 닫기' : '수업 열기'}</button>${(r.classes || []).length ? `<span class="muted small-text">반: ${esc(r.classes.join(', '))}</span>` : ''}</div>
+            <div class="row" style="align-items:flex-start">
+                <div class="stack grow" style="min-width:220px">
+                    <label class="lab">학생에게 띄울 앱</label>
+                    <select data-act="app">${Object.entries(APPS).map(([k, v]) => `<option value="${k}">${v[1]} (${v[2]})</option>`).join('')}</select>
+                    <div class="link" data-el="link"></div>
+                    <div class="row"><button class="small" data-act="copy">링크 복사</button><a class="small" data-el="pub" target="_blank" rel="noopener" style="color:var(--muted)">공개 화면(기록 없음) 열기 ↗</a></div>
+                </div>
+                <div class="qr" data-el="qr"></div>
+            </div>
+            <div class="card stack" style="background:#0b1325">
+                <h3 style="margin:0">선생님 자료 <span class="muted small-text">(이 수업 방 학생 화면에 나와요)</span></h3>
+                <div class="row"><span class="grow">🧘 시범 동작 <b>${(pe.poses || []).length}</b>개 <span class="muted small-text">(없으면 기본 동작 5개)</span></span><a class="small" href="eaim-pose-stretch.html?teach=${r.id}">녹화·관리 →</a></div>
+                <div class="row"><span class="grow">🏀 추천곡 <b>${(pe.songs || []).length}</b>곡</span><a class="small" href="eaim-beat-basket-3.html?teach=${r.id}">곡 추가·관리 →</a></div>
+                <div class="row"><span class="grow">🙋 심판 퀴즈 선생님 문제 <b data-el="qn">${(pe.quiz || []).length}</b>개</span><button class="small" data-act="quiz">문제 편집</button></div>
+                <div class="hidden stack" data-el="quizBox"></div>
+            </div>
+            <div class="row"><button data-act="records">📋 기록 보기</button><button class="small" data-act="csv">CSV 내려받기</button></div>
+            <div data-el="records"></div>
+        </div>`;
+    const q = (s) => el.querySelector(s);
+    const showQR = () => {
+        const app = q('[data-act=app]').value;
+        let link = '';
+        try { link = core.studentLink(r.code, app); } catch (e) { q('[data-el=link]').textContent = e.message; return; }
+        q('[data-el=link]').textContent = link;
+        q('[data-el=qr]').innerHTML = `<img alt="학생 입장 QR" src="${core.qrImageUrl(link, 400)}">`;
+        q('[data-el=pub]').href = APPS[app][0];
+    };
+    q('[data-act=app]').onchange = showQR; showQR();
+    q('[data-act=copy]').onclick = async () => { try { await navigator.clipboard.writeText(q('[data-el=link]').textContent); q('[data-act=copy]').textContent = '복사했어요 ✓'; } catch (e) { alert(q('[data-el=link]').textContent); } };
+    q('[data-act=toggle]').onclick = async () => { await core.toggleRoomOpen(r.id, !r.isOpen); await loadRooms(r.id); };
+    q('[data-act=quiz]').onclick = () => quizEditor(r, q('[data-el=quizBox]'), q('[data-el=qn]'));
+    q('[data-act=records]').onclick = () => showRecords(r, q('[data-el=records]'));
+    q('[data-act=csv]').onclick = () => csv(r);
+    return el;
+}
+
+/* ── 심판 퀴즈 선생님 문제 (수업 방 pe.quiz) ── */
+function quizEditor(r, box, countEl) {
+    box.classList.toggle('hidden');
+    if (box.classList.contains('hidden')) return;
+    let list = [...((r.pe && r.pe.quiz) || [])];
+    let device = []; try { device = JSON.parse(localStorage.getItem('eaim_pe_refquiz_v1') || '[]'); } catch (e) {}
+    const newOnes = device.filter(d => !list.some(x => x.id === d.id));
+    const save = async () => {
+        await fs.updateDoc(fs.doc(core.db, `teachers/${me.uid}/rooms/${r.id}`), { 'pe.quiz': list });
+        r.pe = { ...(r.pe || {}), quiz: list }; countEl.textContent = list.length; draw();
+    };
+    const draw = () => {
+        box.innerHTML = `
+            ${newOnes.length ? `<div class="row"><span class="grow small-text">이 기기에 예전에 만든 문제가 ${newOnes.length}개 있어요.</span><button class="small" data-q="import">수업 방으로 가져오기</button></div>` : ''}
+            ${list.map((x, i) => `<div class="q-item"><div class="row"><span class="grow">${SPORTS[x.sport] || ''} · ${esc(x.sit)}</span><button class="small" data-del="${i}">삭제</button></div><div class="muted small-text">정답: ${esc(x.opts[x.ans])} · ${esc(x.exp)}</div></div>`).join('') || '<p class="muted small-text">아직 선생님 문제가 없어요. 기본 문제만 나와요.</p>'}
+            <div class="stack">
+                <select data-f="sport">${Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+                <textarea data-f="sit" rows="2" placeholder="경기 상황 (예: 수비수가 슛하는 선수의 팔을 쳤다.)"></textarea>
+                <div class="grid2">${[0, 1, 2, 3].map(i => `<input data-f="o${i}" placeholder="보기 ${i + 1}">`).join('')}</div>
+                <label class="row"><span class="small-text muted">정답 보기 번호</span><select data-f="ans"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option></select></label>
+                <textarea data-f="exp" rows="2" placeholder="해설 (규칙 근거를 적어 주세요)"></textarea>
+                <button class="primary small" data-q="add">문제 저장</button>
+            </div>`;
+    };
+    box.onclick = async (e) => {
+        const d = e.target.closest('[data-del]'), a = e.target.closest('[data-q]');
+        if (d && confirm('이 문제를 지울까요?')) { list.splice(+d.dataset.del, 1); await save(); }
+        if (a && a.dataset.q === 'import') { list = [...list, ...newOnes]; newOnes.length = 0; await save(); }
+        if (a && a.dataset.q === 'add') {
+            const f = (k) => box.querySelector(`[data-f=${k}]`).value.trim();
+            const opts = [0, 1, 2, 3].map(i => f('o' + i));
+            if (!f('sit') || opts.some(o => !o)) { alert('상황과 보기 4개를 모두 적어 주세요.'); return; }
+            list.push({ id: Date.now().toString(36), sport: f('sport'), sit: f('sit'), opts, ans: +f('ans'), exp: f('exp') || '선생님이 낸 문제예요.' });
+            await save();
+        }
+    };
+    draw();
+}
+
+/* ── 기록 보기 · 답장 ── */
+async function fetchRecords(r) {
+    const [subs, games] = await Promise.all([core.listSubmissions(r.id), core.listGameResults(r.id)]);
+    return { subs, games };
+}
+const seat = (x) => `${esc(x.classNo || x.className || '')} ${esc(x.studentNo ?? x.number ?? '')}번 ${esc(x.displayName || '')}`;
+const appName = (x) => { const k = String(x.appId || '').replace('pe/', ''); return APPS[k] ? APPS[k][1] : esc(k); };
+function workText(x) {
+    const c = x.content;
+    if (typeof c === 'string') return esc(c);
+    if (c && typeof c === 'object') return esc(Object.entries(c).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' / ') : v}`).join('\n'));
+    return '';
+}
+async function showRecords(r, box) {
+    box.innerHTML = '<p class="muted">불러오는 중…</p>';
+    let data; try { data = await fetchRecords(r); } catch (e) { box.innerHTML = `<p class="muted">불러오지 못했어요: ${esc(e.code || e.message)}</p>`; return; }
+    const { subs, games } = data;
+    box.innerHTML = `
+        <h3>결과물 ${subs.length}개 <span class="muted small-text">(submissions — 세특 원료)</span></h3>
+        <div class="stack">${subs.map(x => `
+            <div class="card" style="background:#0b1325">
+                <div class="row"><b class="grow">${seat(x)}</b><span class="muted small-text">${appName(x)} · ${when(x.createdAt)}</span></div>
+                <div style="white-space:pre-wrap;margin-top:6px">${esc(x.title || '')}${x.title ? '\n' : ''}${workText(x)}</div>
+                <textarea class="reply" data-id="${x.id}" placeholder="학생에게 보낼 답장">${esc(x.feedback || '')}</textarea>
+                <div class="row">${x.kind === 'journal' ? `<button class="small" data-ai="${x.id}">🤖 AI 초안 받기</button>` : ''}<button class="small primary" data-send="${x.id}">답장 보내기</button><span class="muted small-text" data-msg="${x.id}">${x.feedbackAt ? '보냄 ✓' : ''}</span></div>
+            </div>`).join('') || '<p class="muted small-text">아직 없어요.</p>'}</div>
+        <h3 style="margin-top:16px">점수 ${games.length}개 <span class="muted small-text">(gameResults)</span></h3>
+        <div class="scroll"><table><tr><th>학생</th><th>앱</th><th>활동</th><th>점수</th><th>맞힘</th><th>시간</th></tr>
+        ${games.map(x => `<tr><td>${seat(x)}</td><td>${appName(x)}</td><td>${esc(x.game)}</td><td>${esc(x.score ?? '')}</td><td>${x.total != null ? `${esc(x.correct)}/${esc(x.total)}` : ''}</td><td>${when(x.createdAt)}</td></tr>`).join('')}</table></div>`;
+    box.onclick = async (e) => {
+        const ai = e.target.closest('[data-ai]'), send = e.target.closest('[data-send]');
+        if (ai) {
+            const x = subs.find(s => s.id === ai.dataset.ai), ta = box.querySelector(`textarea[data-id="${x.id}"]`), msg = box.querySelector(`[data-msg="${x.id}"]`);
+            ai.disabled = true; msg.textContent = 'AI 가 초안을 쓰는 중…';
+            const d = x.detail || {};
+            const prompt = `너는 중학교 체육 선생님이야. 학생이 리듬 농구(음악 박자에 맞춘 드리블) 활동 뒤에 쓴 소감에 답장 초안을 써 줘.
+[학생 소감] ${typeof x.content === 'string' ? x.content : ''}
+[활동 정보] 고른 기분: ${d.emotion || '모름'}, 드리블 템포: ${d.bpm || '모름'} BPM
+조건: 3문장 이내, 다정하게. 학생이 느낀 점을 구체적으로 짚고, 다음 시간에 해 볼 드리블 동작 하나를 제안해. 활동과 어긋나는 생각은 칭찬하지 말고 부드럽게 바로잡아. 학생 이름이나 개인정보를 묻거나 되풀이하지 마. 몸이 아프다는 말이 있으면 보건 선생님께 알리도록 안내해.`;
+            try { ta.value = await AI.text(prompt, { teacher: me.uid, maxOutputTokens: 600 }); msg.textContent = '초안이에요. 고친 뒤 보내 주세요.'; }
+            catch (err) { msg.textContent = err.message; }
+            ai.disabled = false;
+        }
+        if (send) {
+            const x = subs.find(s => s.id === send.dataset.send), ta = box.querySelector(`textarea[data-id="${x.id}"]`), msg = box.querySelector(`[data-msg="${x.id}"]`);
+            try {
+                await fs.updateDoc(fs.doc(core.db, `teachers/${me.uid}/rooms/${r.id}/submissions/${x.id}`), { feedback: ta.value.trim(), feedbackBy: 'teacher', feedbackAt: fs.serverTimestamp() });
+                x.feedback = ta.value.trim(); msg.textContent = '보냈어요 ✓';
+            } catch (err) { msg.textContent = '보내지 못했어요: ' + (err.code || err.message); }
+        }
+    };
+}
+async function csv(r) {
+    let data; try { data = await fetchRecords(r); } catch (e) { alert('불러오지 못했어요.'); return; }
+    const rows = [['반', '번호', '표시 이름', '앱', '종류', '제목·활동', '점수', '맞힘/문제', '내용', '답장', '시간']];
+    data.subs.forEach(x => rows.push([x.classNo, x.studentNo, x.displayName, x.appId, '결과물', x.title || x.kind, '', '', typeof x.content === 'string' ? x.content : JSON.stringify(x.content), x.feedback || '', when(x.createdAt)]));
+    data.games.forEach(x => rows.push([x.classNo, x.studentNo, x.displayName, x.appId, '점수', x.game, x.score ?? '', x.total != null ? `${x.correct}/${x.total}` : '', '', '', when(x.createdAt)]));
+    const text = '\uFEFF' + rows.map(row => row.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    a.download = `체육_${(r.title || r.code || '수업').replace(/[\\/:*?"<>|]/g, '_')}.csv`;
+    a.click();
+}
+</script>
+</body>
+</html>

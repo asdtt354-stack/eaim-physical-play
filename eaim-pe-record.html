@@ -10,9 +10,10 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="pe-common.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
+        body { word-break: keep-all; font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
         .font-title { font-family: 'Black Han Sans', sans-serif; }
         .clock { font-family: 'Black Han Sans', sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
         .glass-panel { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); }
@@ -31,7 +32,10 @@
 const { useState, useEffect, useRef } = React;
 
 // ───────────── 저장소 ─────────────
-const STORE = 'eaim_pe_record_v1';
+// 2026-09-26: 명단은 번호 + 성 한 글자만(공통규칙 4-3). 측정값은 이 기기에만 두고 서버에 올리지 않음(체육 부록 3-1).
+// 예전 저장(eaim_pe_record_v1)에는 실명 명단이 있어 새 화면은 읽지 않고, "CSV 내려받기 → 지우기"만 안내함.
+const STORE = 'eaim_pe_measure_v2';
+const LEGACY = 'eaim_pe_record_v1';
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -46,11 +50,27 @@ const DEFAULT_EVENTS = [
       table: [{ score: 10, cut: 220 }, { score: 9, cut: 200 }, { score: 8, cut: 180 }, { score: 7, cut: 160 }, { score: 6, cut: 140 }] },
 ];
 const DEFAULT = { className: '', students: [], events: DEFAULT_EVENTS, records: [] };
+const loadLegacy = () => { try { const v = JSON.parse(localStorage.getItem(LEGACY)); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } };
 
 const loadStore = () => {
     try { const v = JSON.parse(localStorage.getItem(STORE)); if (v && Array.isArray(v.events)) return { ...DEFAULT, ...v }; }
     catch (e) {}
-    return DEFAULT;
+    const old = loadLegacy();   // 예전 종목·환산표는 개인정보가 없으므로 이어받음 (명단·기록은 가져오지 않음)
+    return old && Array.isArray(old.events) && old.events.length ? { ...DEFAULT, events: old.events } : DEFAULT;
+};
+// "7 김" / "7 김민준" / "7" → { id, no, sur, name:'7번 김**' }  (이름 전체는 저장하지 않고 성 한 글자만)
+const parseRoster = (text) => {
+    const seen = new Set(), out = []; let cut = false; const bad = [];
+    text.split('\n').map(x => x.trim()).filter(Boolean).forEach(line => {
+        const m = line.match(/^(\d{1,2})\s*[.번)]?\s*([가-힣]*)/);
+        if (!m) { bad.push(line); return; }
+        const no = parseInt(m[1], 10); if (!no || seen.has(no)) return;
+        seen.add(no);
+        if (m[2].length > 1) cut = true;
+        const sur = m[2].slice(0, 1);
+        out.push({ id: 'n' + no, no, sur, name: `${no}번${sur ? ' ' + sur + '**' : ''}` });
+    });
+    return { students: out.sort((a, b) => a.no - b.no), cut, bad };
 };
 
 // ───────────── 계산 ─────────────
@@ -169,7 +189,7 @@ const TimeRun = ({ ev, group, onSave, onExit }) => {
             )}
 
             <p className="text-center text-sm text-slate-400">
-                {phase === 'running' ? '결승선에 들어오는 학생 이름을 누르세요.' : phase === 'countdown' ? '준비…' : '출발하면 이름 버튼이 켜져요.'}
+                {phase === 'running' ? '결승선에 들어오는 학생 번호를 누르세요.' : phase === 'countdown' ? '준비…' : '출발하면 번호 버튼이 켜져요.'}
             </p>
 
             <div className={`grid gap-3 ${group.length > 4 ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -272,7 +292,7 @@ const MeasureTab = ({ data, addRecords, goSettings }) => {
     if (!data.students.length) return (
         <div className="text-center py-16 space-y-4">
             <div className="text-6xl">⏱️</div>
-            <p className="text-slate-300">먼저 학생 명단을 넣어 주세요.</p>
+            <p className="text-slate-300">먼저 학생 명단(번호)을 넣어 주세요.</p>
             <button onClick={goSettings} className="bg-orange-600 px-6 py-3 rounded-2xl font-bold">명단 넣으러 가기</button>
         </div>
     );
@@ -284,7 +304,7 @@ const MeasureTab = ({ data, addRecords, goSettings }) => {
                 <button key={e.id} onClick={() => { setEvId(e.id); setSel([]); }} className="w-full glass-panel p-5 rounded-2xl text-left hover:border-orange-500 transition-colors">
                     <div className="font-black text-lg">{e.name}</div>
                     <div className="text-sm text-slate-400 mt-1">
-                        {e.type === 'time' ? '공동 출발 · 이름을 눌러 도착 기록' : e.limit > 0 ? `${e.limit}초 타이머 · 끝나고 횟수 입력` : `측정값 입력 (${e.unit})`}
+                        {e.type === 'time' ? '공동 출발 · 번호를 눌러 도착 기록' : e.limit > 0 ? `${e.limit}초 타이머 · 끝나고 횟수 입력` : `측정값 입력 (${e.unit})`}
                     </div>
                 </button>
             ))}
@@ -354,8 +374,8 @@ const RecordsTab = ({ data, setData }) => {
     const avg = measured.length ? (measured.reduce((a, r) => a + r.score, 0) / measured.length).toFixed(1) : '-';
 
     const exportCSV = () => {
-        const head = ['이름', ...data.events.flatMap(e => [`${e.name} 최고기록(${e.type === 'time' ? '초' : e.unit})`, `${e.name} 점수`])];
-        const lines = data.students.map(s => [s.name, ...data.events.flatMap(e => {
+        const head = ['반', '번호', '표시 이름', ...data.events.flatMap(e => [`${e.name} 최고기록(${e.type === 'time' ? '초' : e.unit})`, `${e.name} 점수`])];
+        const lines = data.students.map(s => [data.className, s.no, s.sur ? s.sur + '**' : '', ...data.events.flatMap(e => {
             const b = bestOf(e, data.records.filter(r => r.eventId === e.id && r.studentId === s.id).map(r => r.value));
             return b === null ? ['', ''] : [b, scoreOf(e, b)];
         })]);
@@ -386,7 +406,7 @@ const RecordsTab = ({ data, setData }) => {
             <div className="rounded-2xl overflow-hidden border border-slate-800">
                 <table className="w-full text-sm">
                     <thead className="bg-slate-900 text-slate-400">
-                        <tr><th className="p-3 text-left font-normal">이름</th><th className="p-3 text-right font-normal">최고 기록</th><th className="p-3 text-right font-normal">점수</th></tr>
+                        <tr><th className="p-3 text-left font-normal">학생</th><th className="p-3 text-right font-normal">최고 기록</th><th className="p-3 text-right font-normal">점수</th></tr>
                     </thead>
                     <tbody>
                         {rows.map(({ s, best, count, score }) => (
@@ -464,16 +484,21 @@ const EventEditor = ({ ev, onSave, onCancel, onDelete }) => {
 // ───────────── 설정 탭 ─────────────
 const SettingsTab = ({ data, setData }) => {
     const [cls, setCls] = useState(data.className);
-    const [roster, setRoster] = useState(data.students.map(s => s.name).join('\n'));
+    const [roster, setRoster] = useState(data.students.map(s => `${s.no}${s.sur ? ' ' + s.sur : ''}`).join('\n'));
+    const [note, setNote] = useState('');
     const [editing, setEditing] = useState(null);   // event id | 'new'
     const [saved, setSaved] = useState(false);
 
     const saveRoster = () => {
-        const names = roster.split('\n').map(x => x.trim()).filter(Boolean);
-        const byName = new Map(data.students.map(s => [s.name, s]));
-        const students = names.map(n => byName.get(n) || { id: uid(), name: n });
+        const { students, cut, bad } = parseRoster(roster);
         setData({ ...data, className: cls.trim(), students });
+        setRoster(students.map(s => `${s.no}${s.sur ? ' ' + s.sur : ''}`).join('\n'));
+        setNote([cut ? '이름은 성 한 글자만 남겼어요.' : '', bad.length ? `번호로 시작하지 않는 줄 ${bad.length}개는 뺐어요.` : ''].filter(Boolean).join(' '));
         setSaved(true); setTimeout(() => setSaved(false), 1500);
+    };
+    const fillNumbers = () => {
+        const n = parseInt(prompt('몇 번까지 있나요? (예: 28)', '28'), 10);
+        if (n > 0 && n <= 60) setRoster(Array.from({ length: n }, (_, i) => String(i + 1)).join('\n'));
     };
 
     const saveEvent = (ev) => {
@@ -491,9 +516,11 @@ const SettingsTab = ({ data, setData }) => {
         <div className="space-y-8 animate-fadeIn">
             <section className="space-y-3">
                 <h2 className="text-2xl font-title">학생 명단</h2>
-                <input value={cls} onChange={e => setCls(e.target.value)} placeholder="반 이름 (예: 2학년 3반)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl" />
-                <textarea value={roster} onChange={e => setRoster(e.target.value)} placeholder={'한 줄에 한 명씩\n1 김민준\n2 이서연'} className="w-full h-48 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm leading-relaxed" />
-                <p className="text-xs text-slate-500">엑셀이나 나이스 명렬표에서 이름 열을 복사해 붙여넣어도 돼요.</p>
+                <input value={cls} onChange={e => setCls(e.target.value)} placeholder="반 (예: 2-3)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl" />
+                <textarea value={roster} onChange={e => setRoster(e.target.value)} placeholder={'한 줄에 한 명: 번호, 성 한 글자(선택)\n1 김\n2 이\n3'} className="w-full h-48 bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm leading-relaxed" />
+                <p className="text-xs text-slate-500">학생은 <b>번호</b>로 구분해요. 이름 전체는 적지 않아요 — 이름까지 붙여 넣으면 성 한 글자만 남겨요.</p>
+                <button onClick={fillNumbers} className="w-full bg-slate-800 p-3 rounded-xl text-sm">번호만 1번부터 채우기</button>
+                {note && <p className="text-xs text-amber-400">{note}</p>}
                 <button onClick={saveRoster} className="w-full bg-orange-600 p-3 rounded-xl font-bold">{saved ? '저장했어요 ✓' : `명단 저장 (${roster.split('\n').filter(x => x.trim()).length}명)`}</button>
             </section>
 
@@ -520,7 +547,7 @@ const SettingsTab = ({ data, setData }) => {
 
             <section className="space-y-2">
                 <h2 className="text-lg font-title text-slate-400">데이터</h2>
-                <p className="text-xs text-slate-500">명단과 기록은 이 휴대폰에만 저장돼요. 기록은 기록 탭에서 엑셀로 내보낼 수 있어요.</p>
+                <p className="text-xs text-slate-500">명단과 기록은 이 기기에만 저장돼요(서버에 올리지 않아요). 체력 측정값은 건강 정보에 가까워요. 학기가 끝나면 엑셀로 내보낸 뒤 지워 주세요.</p>
                 <button onClick={() => { if (confirm('명단, 종목, 기록을 모두 지우고 처음 상태로 돌릴까요?')) setData(DEFAULT); }} className="text-xs text-slate-500 underline">전체 초기화</button>
             </section>
         </div>
@@ -528,6 +555,36 @@ const SettingsTab = ({ data, setData }) => {
 };
 
 // ───────────── 앱 ─────────────
+// 예전 실명 기록: CSV 로 먼저 내려받아야 지울 수 있음 (공통규칙 5-3 안전장치와 같은 순서)
+const LegacyBanner = () => {
+    const [old, setOld] = useState(loadLegacy);
+    const [got, setGot] = useState(false);
+    if (!old || !Array.isArray(old.students) || !old.students.length) return null;
+    const download = () => {
+        const evs = old.events || [];
+        const head = ['이름(예전)', ...evs.flatMap(e => [`${e.name} 최고기록`, `${e.name} 점수`])];
+        const lines = old.students.map(s => [s.name, ...evs.flatMap(e => {
+            const b = bestOf(e, (old.records || []).filter(r => r.eventId === e.id && r.studentId === s.id).map(r => r.value));
+            return b === null ? ['', ''] : [b, scoreOf(e, b)];
+        })]);
+        const csv = '\uFEFF' + [head, ...lines].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = `예전기록_${old.className || '기록'}.csv`; a.click(); setGot(true);
+    };
+    const remove = () => { if (confirm('예전 명단과 기록을 이 기기에서 지울까요? 되돌릴 수 없어요.')) { localStorage.removeItem(LEGACY); setOld(null); } };
+    return (
+        <div className="m-5 mb-0 p-4 rounded-2xl border border-amber-500/60 bg-amber-500/10 text-sm space-y-2">
+            <p className="font-bold text-amber-300">이 기기에 예전 명단(실명 {old.students.length}명)과 기록이 남아 있어요.</p>
+            <p className="text-slate-300">새 화면은 번호로만 기록해요. 예전 기록은 엑셀로 내려받아 학교 컴퓨터에 보관한 뒤 여기서 지워 주세요.</p>
+            <div className="grid grid-cols-2 gap-2">
+                <button onClick={download} className="bg-slate-800 p-3 rounded-xl font-bold">① CSV 내려받기</button>
+                <button onClick={remove} disabled={!got} className="bg-red-700 disabled:bg-slate-900 disabled:text-slate-600 p-3 rounded-xl font-bold">② 예전 기록 지우기</button>
+            </div>
+        </div>
+    );
+};
+
 const App = () => {
     const [data, setDataState] = useState(loadStore);
     const [tab, setTab] = useState('measure');
@@ -543,6 +600,7 @@ const App = () => {
                 {data.className && <span className="text-xs text-slate-400">{data.className}</span>}
             </header>
 
+            <LegacyBanner />
             <main className="flex-grow p-5 pb-28">
                 {tab === 'measure' && <MeasureTab key="m" data={data} addRecords={addRecords} goSettings={() => setTab('settings')} />}
                 {tab === 'records' && <RecordsTab data={data} setData={setData} />}

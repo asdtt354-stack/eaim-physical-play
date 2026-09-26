@@ -36,7 +36,7 @@
 <div id="setup" class="wrap stack">
     <div class="card stack">
         <h2>박자에 맞춰 포즈를 바꿔요</h2>
-        <p class="muted small-text" style="margin:0">정해진 박이 지날 때마다 동작이 바뀌어요. 박자가 끝나기 전에 자세를 맞추면 PERFECT! 동작은 스트레칭 따라하기에서 선생님이 녹화한 것을 함께 써요.</p>
+        <p class="muted small-text" style="margin:0">정해진 박이 지날 때마다 동작이 바뀌어요. 박자가 끝나기 전에 자세를 맞추면 PERFECT! 동작은 스트레칭 따라하기와 같은 동작을 써요(수업에서는 선생님 시범 동작). 영상은 이 기기 안에서만 쓰고 저장하지 않아요.</p>
         <label><span class="label">빠르기 <b id="bpmLbl">96</b> BPM</span><input type="range" id="bpm" min="70" max="130" value="96" style="width:100%"></label>
         <div class="row">
             <span class="label" style="margin:0">동작 바뀌는 간격</span>
@@ -79,14 +79,17 @@
 
 <video id="video" playsinline muted class="hidden"></video>
 <script src="pe-common.js"></script>
+<script type="module" src="pe-class.js"></script>
 <script type="module">
-import { loadPoses, initPose, startCamera, detect, computeFeatures, scorePose, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
+import { loadPoses, posesNow, initPose, startCamera, detect, computeFeatures, scorePose, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
 
 const video = PE.$('video'), view = PE.$('view');
 let beatsPer = 8, len = 12, bpm = 96, poses = loadPoses(), chosen = new Set(poses.map(p => p.id));
 let drum = null, seq = [], results = [], state = null, running = false;
 
-PE.$('poseChips').innerHTML = '<span class="label" style="margin:0;width:100%">사용할 동작</span>' + poses.map(p => `<button class="small sel" data-pose="${p.id}">${PE.esc(p.name)}</button>`).join('');
+const renderChips = () => { PE.$('poseChips').innerHTML = '<span class="label" style="margin:0;width:100%">사용할 동작</span>' + poses.map(p => `<button class="small ${chosen.has(p.id) ? 'sel' : ''}" data-pose="${p.id}">${PE.esc(p.name)}</button>`).join(''); };
+renderChips();
+posesNow().then(list => { poses = list; chosen = new Set(poses.map(p => p.id)); renderChips(); });
 PE.$('poseChips').onclick = (e) => { const b = e.target.closest('[data-pose]'); if (!b) return; const id = b.dataset.pose; chosen.has(id) ? chosen.delete(id) : chosen.add(id); b.classList.toggle('sel', chosen.has(id)); };
 PE.$('bpm').oninput = () => { bpm = +PE.$('bpm').value; PE.$('bpmLbl').textContent = bpm; };
 const pick = (attr, set) => document.querySelectorAll(`[${attr}]`).forEach(b => b.onclick = () => { set(+b.getAttribute(attr)); document.querySelectorAll(`[${attr}]`).forEach(x => x.classList.toggle('sel', x === b)); });
@@ -106,7 +109,7 @@ function makeSeq() {
 async function start() {
     if (chosen.size < 2) { alert('동작을 2개 이상 골라 주세요.'); return; }
     PE.$('btnStart').disabled = true; PE.$('status').textContent = '카메라와 자세 인식을 준비하는 중…';
-    try { await initPose({ numPoses: 1 }); await startCamera(video, view); }
+    try { await startCamera(video, view); await initPose({ numPoses: 1 }); }
     catch (e) { PE.$('status').textContent = cameraErrorText(e); PE.$('btnStart').disabled = false; return; }
     PE.$('btnStart').disabled = false; PE.$('status').textContent = '';
     PE.$('setup').classList.add('hidden'); PE.$('result').classList.add('hidden'); PE.$('game').classList.remove('hidden');
@@ -177,6 +180,11 @@ function finish() {
     PE.$('rInfo').textContent = `PERFECT ${cnt('PERFECT')} · GOOD ${cnt('GOOD')} · OK ${cnt('OK')} · MISS ${cnt('MISS')} · 최대 ${state.maxCombo}콤보`;
     PE.$('rTable').innerHTML = '<tr><th>#</th><th>동작</th><th>일치도</th><th>판정</th></tr>' + results.map((r, i) => `<tr><td>${i + 1}</td><td>${PE.esc(r.pose.name)}</td><td>${r.score}</td><td>${r.label}</td></tr>`).join('');
     PE.$('game').classList.add('hidden'); PE.$('result').classList.remove('hidden');
+    if (window.PEClass && PEClass.inClass() && results.length) {
+        PEClass.saveResult({ game: 'rhythm', score: state.total, correct: cnt('PERFECT') + cnt('GOOD'), total: results.length,
+            detail: { perfect: cnt('PERFECT'), good: cnt('GOOD'), ok: cnt('OK'), miss: cnt('MISS'), maxCombo: state.maxCombo, bpm } })
+            .then(r => { PE.$('rInfo').textContent += r.ok ? ' · 선생님께 보냈어요 ✓' : ' · ' + r.reason; });
+    }
 }
 
 PE.$('btnStart').onclick = start;

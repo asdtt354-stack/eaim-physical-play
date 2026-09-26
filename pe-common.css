@@ -1,7 +1,7 @@
-/* EAIM 체육교과 플랫폼 공통 스타일 */
+/* EAIM 체육교과 플랫폼 공통 스타일  v2.0 (2026-09-26) — keep-all, 휴대폰 360px·프로젝터 */
 :root { color-scheme: dark only; --bg:#020617; --card:#0f172a; --line:#1e293b; --text:#f8fafc; --muted:#94a3b8; --accent:#f97316; --good:#22c55e; --mid:#eab308; --bad:#ef4444; --blue:#3b82f6; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; }
+body { margin: 0; word-break: keep-all; overflow-wrap: anywhere; background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; }
 .title, h2 { font-family: 'Black Han Sans', sans-serif; font-weight: 400; }
 header.bar { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: rgba(2,6,23,.94); z-index: 30; gap: 12px; }
 header.bar h1 { margin: 0; font-size: 18px; color: var(--accent); font-family: 'Black Han Sans', sans-serif; font-weight: 400; }
@@ -36,3 +36,15 @@ th { color: var(--muted); font-weight: 400; }
 .tabs button { flex: none; background: #1e293b; }
 .tabs button.sel { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* 휴대폰 (360px 까지) */
+@media (max-width: 480px) {
+  header.bar { padding: 10px 12px; }
+  header.bar h1 { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wrap { padding: 14px 12px 70px; }
+  button { padding: 10px 13px; font-size: 14px; }
+  h2 { font-size: 21px; }
+}
+/* 프로젝터·큰 화면 */
+@media (min-width: 1600px) { body { font-size: 18px; } .wrap { max-width: 900px; } }
+img, video, canvas, svg { max-width: 100%; }

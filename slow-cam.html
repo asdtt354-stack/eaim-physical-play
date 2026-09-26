@@ -27,7 +27,7 @@
 <div class="wrap wide stack">
     <div id="srcBox" class="card stack">
         <h2>영상 준비</h2>
-        <p class="muted small-text" style="margin:0">친구의 슛, 멀리뛰기, 스윙 동작을 옆에서 찍거나 저장된 영상을 불러와요. 영상은 이 기기 안에서만 처리돼요.</p>
+        <p class="muted small-text" style="margin:0">친구의 슛, 멀리뛰기, 스윙 동작을 옆에서 찍거나 저장된 영상을 불러와요. 영상과 캡처는 이 화면 안에서만 쓰고 저장하거나 보내지 않아요(새로고침하면 사라져요). 친구를 찍을 때는 먼저 물어봐요.</p>
         <div class="row">
             <button class="primary" id="btnCamBack">후면 카메라로 촬영</button>
             <button id="btnCamFront">전면 카메라로 촬영</button>
@@ -108,6 +108,7 @@ async function loadPose() {
 
 // ── 촬영 ──
 async function openCam(facing) {
+    if (!(await PE.cameraOk())) { PE.$('status').textContent = '카메라를 켜지 않았어요. 준비되면 다시 눌러 주세요.'; return; }
     try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } }, audio: false });
     } catch (e) { PE.$('status').textContent = cameraErrorText(e); return; }
@@ -231,7 +232,7 @@ tog('tLine', () => { lineMode = !lineMode; if (lineMode) vid.pause(); return lin
 PE.$('btnClearLines').onclick = () => { lines = []; };
 PE.$('btnNew').onclick = () => { vid.pause(); vid.removeAttribute('src'); mode = 'idle'; showUI(); };
 window.addEventListener('keydown', (e) => {
-    if (mode !== 'play') return;
+    if (mode !== 'play' || PE.typing(e)) return;   // 공통규칙 3번: 입력 중에는 단축키 없음
     if (e.key === 'ArrowLeft') step(-1 / 30);
     if (e.key === 'ArrowRight') step(1 / 30);
     if (e.code === 'Space') { e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }

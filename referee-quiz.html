@@ -36,21 +36,7 @@
             <span class="grow">모둠 대결 모드 <span class="muted small-text">(문제마다 맞힌 모둠을 눌러 점수 기록)</span></span>
             <select id="teamN"><option value="0">끄기</option><option value="2">2모둠</option><option value="3">3모둠</option><option value="4">4모둠</option><option value="5">5모둠</option><option value="6">6모둠</option></select>
         </div>
-        <details class="card">
-            <summary style="cursor:pointer;font-weight:700">🧑‍🏫 선생님: 문제 추가하기</summary>
-            <div class="stack" style="margin-top:12px">
-                <select id="nSport"></select>
-                <textarea id="nSit" rows="3" placeholder="경기 상황 (예: 수비수가 슛하는 선수의 팔을 쳤다.)"></textarea>
-                <input id="nO0" placeholder="보기 1 (정답이 아니어도 돼요)" style="width:100%">
-                <input id="nO1" placeholder="보기 2" style="width:100%">
-                <input id="nO2" placeholder="보기 3" style="width:100%">
-                <input id="nO3" placeholder="보기 4" style="width:100%">
-                <label class="row"><span class="label" style="margin:0">정답 보기 번호</span><select id="nAns"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option></select></label>
-                <textarea id="nExp" rows="2" placeholder="해설"></textarea>
-                <button class="primary" id="btnAddQ">문제 저장</button>
-                <p class="muted small-text" id="customInfo" style="margin:0"></p>
-            </div>
-        </details>
+        <p class="muted small-text" id="customInfo" style="margin:0"></p>
     </section>
 
     <section id="quiz" class="hidden">
@@ -78,6 +64,7 @@
 </div>
 
 <script src="pe-common.js"></script>
+<script type="module" src="pe-class.js"></script>
 <script>
 const SPORTS = { basketball: ['🏀', '농구'], soccer: ['⚽', '축구'], volleyball: ['🏐', '배구'], badminton: ['🏸', '배드민턴'] };
 // [종목, 상황, 보기4, 정답번호, 해설]
@@ -109,21 +96,22 @@ const BANK = [
     ['badminton', '서브한 셔틀콕이 대각선 방향이 아닌, 정면의 상대 서비스 코트에 떨어졌다.', ['인', '폴트', '렛', '다시 서브하되 점수 없음'], 1, '서브는 대각선 방향의 상대 서비스 코트 안에 떨어져야 해요.'],
 ].map(([sport, sit, opts, ans, exp], i) => ({ id: 'b' + i, sport, sit, opts, ans, exp }));
 
+// 선생님 문제: 수업 QR 로 들어오면 수업 방의 문제(교사 페이지에서 만듦), 공개 화면에서는 이 기기에 예전에 만든 문제
 let custom = PE.load('eaim_pe_refquiz_v1', []);
-let qs = [], qi = 0, correct = 0, curSport = null, teamN = 0, teamScores = [], answered = false, curTeamHits = new Set();
+PE.onClass((st) => { if (st.mode === 'class') { custom = PEClass.content('quiz') || []; renderHome(); } });
+let wrongs = [], qs = [], qi = 0, correct = 0, curSport = null, teamN = 0, teamScores = [], answered = false, curTeamHits = new Set();
 const all = () => [...BANK, ...custom];
 
 function renderHome() {
     PE.$('sports').innerHTML = Object.entries(SPORTS).map(([k, [e, n]]) => `<button data-sport="${k}"><span class="e">${e}</span>${n}<br><span class="muted small-text">${all().filter(q => q.sport === k).length}문제</span></button>`).join('') +
         `<button data-sport="all"><span class="e">🎲</span>전체 섞기<br><span class="muted small-text">${all().length}문제</span></button>`;
-    PE.$('nSport').innerHTML = Object.entries(SPORTS).map(([k, [, n]]) => `<option value="${k}">${n}</option>`).join('');
-    PE.$('customInfo').textContent = custom.length ? `선생님이 추가한 문제 ${custom.length}개` : '';
+    PE.$('customInfo').textContent = custom.length ? `선생님이 낸 문제 ${custom.length}개가 함께 나와요.` : '';
 }
 function startQuiz(sport) {
     curSport = sport;
     const pool = all().filter(q => sport === 'all' || q.sport === sport);
     qs = pool.sort(() => Math.random() - 0.5).slice(0, 10);
-    qi = 0; correct = 0; teamN = +PE.$('teamN').value; teamScores = Array(teamN).fill(0);
+    qi = 0; correct = 0; wrongs = []; teamN = +PE.$('teamN').value; teamScores = Array(teamN).fill(0);
     PE.$('home').classList.add('hidden'); PE.$('result').classList.add('hidden'); PE.$('quiz').classList.remove('hidden');
     showQ();
 }
@@ -144,6 +132,7 @@ PE.$('opts').onclick = (e) => {
     const b = e.target.closest('button'); if (!b || answered) return;
     answered = true;
     const q = qs[qi], pick = +b.dataset.i, ok = pick === q.ans;
+    if (!ok) wrongs.push({ sit: q.sit, pick: q.opts[pick], ans: q.opts[q.ans] });
     if (ok) { correct++; PE.tone(1047, 0.15, 0, 'triangle'); PE.tone(1319, 0.25, 0.12, 'triangle'); } else PE.tone(220, 0.35, 0, 'sawtooth', 0.15);
     PE.$('opts').querySelectorAll('button').forEach(x => { const i = +x.dataset.i; if (i === q.ans) x.classList.add('right'); else if (i === pick) x.classList.add('wrong'); });
     PE.$('explain').innerHTML = `<b style="color:${ok ? 'var(--good)' : 'var(--bad)'}">${ok ? '정답이에요!' : '아쉬워요.'}</b> ${PE.esc(q.exp)}`;
@@ -170,20 +159,15 @@ function finish() {
         tb.innerHTML = '<h3>모둠 대결 결과</h3>' + teamScores.map((s, i) => `<div class="row" style="justify-content:space-between;padding:6px 0"><span>${s === max && max > 0 ? '👑 ' : ''}${i + 1}모둠</span><b>${s}점</b></div>`).join('');
         tb.classList.remove('hidden');
     } else tb.classList.add('hidden');
+    if (!teamN && window.PEClass && PEClass.inClass()) {
+        PEClass.saveResult({ game: 'referee-' + curSport, score: Math.round(r * 100), correct, total: qs.length, wrongLog: wrongs, detail: { sport: curSport } })
+            .then(res => { PE.$('rMsg').textContent += res.ok ? ' (선생님께 보냈어요 ✓)' : ' (' + res.reason + ')'; });
+    }
 }
 PE.$('sports').onclick = (e) => { const b = e.target.closest('[data-sport]'); if (b) startQuiz(b.dataset.sport); };
 PE.$('btnRetry').onclick = () => startQuiz(curSport);
 PE.$('btnHome').onclick = () => { PE.$('result').classList.add('hidden'); PE.$('home').classList.remove('hidden'); renderHome(); };
 PE.$('btnQuit').onclick = () => { PE.$('quiz').classList.add('hidden'); PE.$('home').classList.remove('hidden'); };
-PE.$('btnAddQ').onclick = () => {
-    const opts = [0, 1, 2, 3].map(i => PE.$('nO' + i).value.trim());
-    const sit = PE.$('nSit').value.trim();
-    if (!sit || opts.some(o => !o)) { alert('상황과 보기 4개를 모두 적어 주세요.'); return; }
-    custom.push({ id: PE.uid(), sport: PE.$('nSport').value, sit, opts, ans: +PE.$('nAns').value, exp: PE.$('nExp').value.trim() || '선생님이 낸 문제예요.' });
-    PE.save('eaim_pe_refquiz_v1', custom);
-    ['nSit', 'nO0', 'nO1', 'nO2', 'nO3', 'nExp'].forEach(id => PE.$(id).value = '');
-    renderHome();
-};
 renderHome();
 </script>
 </body>

@@ -46,7 +46,7 @@
                 <div class="chips" id="eventChips"></div>
             </div>
             <div id="manualBox" class="hidden">
-                <textarea id="manualText" rows="8" placeholder="한 줄에 한 명: 이름 실력(1~5)&#10;김민준 4&#10;이서연 3&#10;실력을 비우면 3으로 계산해요"></textarea>
+                <textarea id="manualText" rows="8" placeholder="한 줄에 한 명: 번호(또는 별칭) 실력(1~5)&#10;1번 4&#10;2번 3&#10;실력을 비우면 3으로 계산해요 · 이름 전체는 적지 않아요"></textarea>
             </div>
         </div>
 
@@ -99,7 +99,7 @@
 <script src="pe-common.js"></script>
 <script>
 const COLORS = ['#f43f5e', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#06b6d4', '#f97316', '#ec4899'];
-const rec = PE.load('eaim_pe_record_v1', null);
+const rec = PE.load('eaim_pe_measure_v2', null);   // 기록 측정의 번호 명단 (2026-09-26 새 저장)
 let src = rec && rec.students && rec.students.length ? 'record' : 'manual';
 let selEvents = new Set((rec?.events || []).filter(e => rec.records.some(r => r.eventId === e.id)).map(e => e.id));
 let absent = new Set();

@@ -52,13 +52,14 @@
     <div class="card">
         <h3>동작 카드</h3>
         <div class="palette" id="palette"></div>
-        <p class="muted small-text" style="margin:10px 0 0">새 동작은 <a href="eaim-pose-stretch.html" style="color:var(--accent)">스트레칭 따라하기</a> 앱의 선생님 메뉴에서 녹화하면 여기에 나타나요. 모둠이 만든 자세를 녹화해서 쓰면 창작 안무가 돼요.</p>
+        <p class="muted small-text" style="margin:10px 0 0">동작 카드는 스트레칭 따라하기와 같은 동작이에요. 수업에서는 선생님이 교사 페이지에서 녹화한 시범 동작이 나와요. 모둠이 만든 자세를 선생님이 녹화해 주면 창작 안무가 돼요. 영상은 이 기기 안에서만 쓰고 저장하지 않아요.</p>
     </div>
     <div class="row">
         <button id="btnSave">안무 저장</button>
         <button id="btnPreview">음악과 미리 보기</button>
         <button class="primary grow" id="btnChallenge">카메라로 도전 (최대 4명)</button>
     </div>
+    <div class="row hidden" id="sendRow"><button id="btnSend">📤 선생님께 안무 보내기</button><span class="muted small-text">안무 이름에 친구 이름은 쓰지 않아요.</span></div>
     <p class="muted small-text" id="status"></p>
 </div>
 
@@ -96,15 +97,18 @@
     <p class="muted" style="text-align:center" id="rMsg"></p>
     <div class="card"><table id="rTable"></table></div>
     <div class="row"><button class="primary grow" id="btnRAgain">다시 도전</button><button class="grow" id="btnREdit">안무 고치기</button></div>
+    <div class="row hidden" id="sendRow2"><button class="grow" id="btnSend2">📤 안무와 도전 결과를 선생님께 보내기</button></div>
+    <p class="muted small-text" id="sendMsg2" style="text-align:center"></p>
 </div>
 
 <video id="video" playsinline muted class="hidden"></video>
 <script src="pe-common.js"></script>
+<script type="module" src="pe-class.js"></script>
 <script type="module">
-import { loadPoses, initPose, startCamera, detect, computeFeatures, scorePose, syncScore, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
+import { loadPoses, posesNow, initPose, startCamera, detect, computeFeatures, scorePose, syncScore, drawFigure, drawLive, DrumLoop, cameraErrorText } from './pose-core.js';
 
 const SLOTS = 8, STORE = 'eaim_pe_dance_v1';
-const poses = loadPoses(), byId = Object.fromEntries(poses.map(p => [p.id, p]));
+let poses = loadPoses(), byId = Object.fromEntries(poses.map(p => [p.id, p]));
 let slots = Array(SLOTS).fill(null), selSlot = 0, bpm = 100, drum = null, running = null, res = [];
 let saved = PE.load(STORE, []);
 const video = PE.$('video'), view = PE.$('view');
@@ -178,7 +182,7 @@ PE.$('btnPvStop').onclick = () => { stopAll(); show('editor'); };
 async function challenge() {
     if (!hasMoves()) return;
     PE.$('status').textContent = '카메라와 자세 인식을 준비하는 중…';
-    try { await initPose({ numPoses: 4 }); await startCamera(video, view); }
+    try { await startCamera(video, view); await initPose({ numPoses: 4 }); }
     catch (e) { PE.$('status').textContent = cameraErrorText(e); return; }
     PE.$('status').textContent = '';
     show('challenge'); PE.wake(true);
@@ -232,11 +236,28 @@ function finish() {
     const accAll = avg(rows.map(r => r.acc).filter(v => v != null)), syncAll = avg(rows.map(r => r.sync).filter(v => v != null));
     PE.$('rAcc').textContent = accAll == null ? '–' : Math.round(accAll);
     PE.$('rSync').textContent = syncAll == null ? '–' : Math.round(syncAll);
+    lastResult = { acc: accAll == null ? null : Math.round(accAll), sync: syncAll == null ? null : Math.round(syncAll) }; PE.$('sendMsg2').textContent = '';
     PE.$('rMsg').textContent = syncAll == null ? '혼자 도전했어요. 모둠이 함께 서면 싱크 점수도 나와요.' : syncAll >= 80 ? '모둠의 호흡이 척척 맞았어요!' : '서로의 동작을 보며 타이밍을 맞춰 보세요.';
     PE.$('rTable').innerHTML = '<tr><th>마디</th><th>동작</th><th>정확도</th><th>싱크</th></tr>' + rows.map(r => `<tr><td>${r.i + 1}</td><td>${PE.esc(r.name)}</td><td>${r.acc == null ? '–' : Math.round(r.acc)}</td><td>${r.sync == null ? '–' : Math.round(r.sync)}</td></tr>`).join('');
     show('result');
 }
 PE.$('btnChallenge').onclick = challenge;
+// ── 수업: 수업 방 동작 쓰기 + 선생님께 보내기 (submissions) ──
+let lastResult = null;
+posesNow().then(list => { poses = list; byId = Object.fromEntries(poses.map(p => [p.id, p])); slots = slots.map(id => id && byId[id] ? id : null); renderPalette(); renderSlots(); });
+PE.onClass((st) => { if (st.mode === 'class') { PE.$('sendRow').classList.remove('hidden'); PE.$('sendRow2').classList.remove('hidden'); } });
+async function sendDance(withResult) {
+    if (!slots.some(Boolean)) { alert('동작을 한 칸 이상 넣어 주세요.'); return; }
+    const name = PE.$('danceName').value.trim() || '우리 모둠 안무';
+    const bars = slots.map((id, i) => `${i + 1}마디 ${id && byId[id] ? byId[id].name : '쉬기'}`);
+    const r = await PEClass.saveWork({ kind: 'dance', title: name, activityType: 'creation',
+        content: { 빠르기: bpm + ' BPM', 안무: bars.join(' / '), ...(withResult && lastResult ? { 정확도: lastResult.acc, 싱크: lastResult.sync } : {}) },
+        detail: { bpm, slots: slots.map(id => (id && byId[id] ? byId[id].name : null)), result: withResult ? lastResult : null } });
+    const msg = r.ok ? '선생님께 보냈어요 ✓' : r.reason;
+    if (withResult) PE.$('sendMsg2').textContent = msg; else PE.$('status').textContent = msg;
+}
+PE.$('btnSend').onclick = () => sendDance(false);
+PE.$('btnSend2').onclick = () => sendDance(true);
 PE.$('btnCStop').onclick = () => { stopAll(); show('editor'); };
 PE.$('btnRAgain').onclick = challenge;
 PE.$('btnREdit').onclick = () => show('editor');

@@ -53,10 +53,15 @@
         <button id="btnSave">작전 저장</button>
         <button class="ghost" id="btnDeletePlay">저장된 작전 삭제</button>
     </div>
+    <div class="card stack hidden" id="sendBox">
+        <textarea id="playNote" rows="3" placeholder="이 작전을 한두 문장으로 설명해요. 누가 어디로 움직이고, 왜 그렇게 하는지 (친구 이름 대신 1번·2번 선수로 적어요)"></textarea>
+        <div class="row"><button class="primary" id="btnSend">📤 선생님께 작전 보내기</button><span class="muted small-text" id="sendMsg"></span></div>
+    </div>
     <p class="muted small-text">선수를 끌어 위치를 잡고 "다음 장면"을 추가하는 식으로 움직임을 만들어요. 재생하면 장면 사이를 부드럽게 이어 보여줘요. 펜과 화살표는 장면마다 따로 그려져요.</p>
 </div>
 
 <script src="pe-common.js"></script>
+<script type="module" src="pe-class.js"></script>
 <script>
 const NS = 'http://www.w3.org/2000/svg', svg = PE.$('board');
 const COURTS = {
@@ -236,6 +241,19 @@ PE.$('btnDeletePlay').onclick = () => {
     if (confirm(`'${plays[i].name}'을(를) 삭제할까요?`)) { plays.splice(i, 1); PE.save('eaim_pe_tactics_v1', plays); renderPlays(); }
 };
 setCourt('basketball'); renderPlays();
+// 수업: 작전을 선생님께 보내기 (submissions)
+PE.onClass((st) => { if (st.mode === 'class') PE.$('sendBox').classList.remove('hidden'); });
+PE.$('btnSend').onclick = async () => {
+    const name = PE.$('playName').value.trim() || '우리 모둠 작전';
+    const note = PE.$('playNote').value.trim();
+    if (!note) { PE.$('sendMsg').textContent = '작전 설명을 한두 문장 적어 주세요.'; return; }
+    PE.$('btnSend').disabled = true;
+    const r = await PEClass.saveWork({ kind: 'tactics', title: name, activityType: 'creation',
+        content: { 종목: { basketball: '농구', soccer: '축구', handball: '핸드볼' }[court], 인원: count + '명', 장면: scenes.length + '개', 설명: note },
+        detail: { court, count, scenesJson: JSON.stringify(scenes).slice(0, 200000) } });   // Firestore 는 배열 안의 배열을 못 받아서 글자로 묶음
+    PE.$('btnSend').disabled = false;
+    PE.$('sendMsg').textContent = r.ok ? '선생님께 보냈어요 ✓' : r.reason;
+};
 </script>
 </body>
 </html>

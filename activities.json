@@ -1,0 +1,363 @@
+[
+  {
+    "id": "pe/record",
+    "title": "기록 측정",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "teacher",
+    "activityType": "check",
+    "scope": "lesson",
+    "sessions": 1,
+    "standards": [],
+    "tags": [
+      "측정",
+      "환산표",
+      "PAPS"
+    ],
+    "url": "eaim-pe-record.html",
+    "classroom": false,
+    "ai": false,
+    "summary": "휴대폰 한 대로 조 단위 달리기·횟수를 재고 환산표로 점수를 내는 선생님 도구. 명단은 번호로, 기록은 이 기기에만",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/league",
+    "title": "팀 편성 · 학급 리그",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "teacher",
+    "activityType": "game",
+    "scope": "project",
+    "sessions": 4,
+    "standards": [],
+    "tags": [
+      "팀 편성",
+      "리그",
+      "경쟁"
+    ],
+    "url": "team-league.html",
+    "classroom": false,
+    "ai": false,
+    "summary": "기록 점수로 실력이 고른 팀을 짜고 리그 일정·순위표를 관리하는 선생님 도구",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/circuit",
+    "title": "서킷 트레이닝 타이머",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "teacher",
+    "activityType": "game",
+    "scope": "activity",
+    "minutes": 20,
+    "standards": [],
+    "tags": [
+      "서킷",
+      "타바타",
+      "체력"
+    ],
+    "url": "circuit-timer.html",
+    "classroom": false,
+    "ai": false,
+    "summary": "스테이션마다 어느 모둠이 운동하는지 한 화면에 보여 주는 타이머(타바타 모드 포함)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/basket",
+    "title": "비트 & 바스켓",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [
+      "음악"
+    ],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "writing",
+    "scope": "lesson",
+    "sessions": 1,
+    "standards": [],
+    "tags": [
+      "농구",
+      "드리블",
+      "리듬",
+      "감정"
+    ],
+    "url": "eaim-beat-basket-3.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "기분에 맞는 선생님 추천곡의 박자에 맞춰 팀별 드리블·패스·슛을 하고 소감을 선생님께 보내는 활동",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/stretch",
+    "title": "스트레칭 따라하기",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "game",
+    "scope": "activity",
+    "minutes": 15,
+    "standards": [],
+    "tags": [
+      "스트레칭",
+      "자세 인식",
+      "카메라"
+    ],
+    "url": "eaim-pose-stretch.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "카메라 자세 인식으로 화면 속 동작을 따라 하고 관절 일치도를 확인하는 활동(영상은 기기 안에서만)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/rhythm",
+    "title": "리듬 포즈 게임",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [
+      "음악"
+    ],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "game",
+    "scope": "activity",
+    "minutes": 15,
+    "standards": [],
+    "tags": [
+      "리듬",
+      "자세 인식",
+      "카메라"
+    ],
+    "url": "rhythm-pose.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "드럼 박자에 맞춰 바뀌는 자세를 제때 맞추는 게임(영상은 기기 안에서만)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/dance",
+    "title": "창작 안무 만들기",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [
+      "음악"
+    ],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "creation",
+    "scope": "project",
+    "sessions": 3,
+    "standards": [],
+    "tags": [
+      "표현",
+      "안무",
+      "모둠",
+      "카메라"
+    ],
+    "url": "dance-maker.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "동작 카드를 8마디에 배치해 모둠 안무를 짜고 최대 4명의 정확도·싱크를 확인해 선생님께 보내는 활동",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/slowcam",
+    "title": "동작 분석 슬로우 캠",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "check",
+    "scope": "activity",
+    "minutes": 20,
+    "standards": [],
+    "tags": [
+      "동작 분석",
+      "카메라",
+      "폼"
+    ],
+    "url": "slow-cam.html",
+    "classroom": false,
+    "ai": false,
+    "summary": "슛·도약·스윙을 찍어 느리게 돌려 보며 관절 각도와 보조선으로 폼을 분석(영상은 저장하지 않음)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/tactics",
+    "title": "전술 보드",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "creation",
+    "scope": "lesson",
+    "sessions": 1,
+    "standards": [],
+    "tags": [
+      "전술",
+      "농구",
+      "축구",
+      "핸드볼",
+      "모둠"
+    ],
+    "url": "tactics-board.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "코트에서 선수를 옮겨 장면을 만들고 작전을 애니메이션으로 발표·설명해 선생님께 보내는 활동",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/referee",
+    "title": "심판 판정 퀴즈",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "quiz",
+    "scope": "activity",
+    "minutes": 15,
+    "standards": [],
+    "tags": [
+      "규칙",
+      "심판",
+      "퀴즈"
+    ],
+    "url": "referee-quiz.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "농구·축구·배구·배드민턴 상황을 보고 판정하는 퀴즈(모둠 대결, 수업에서는 선생님 문제 포함)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/cpr",
+    "title": "가슴압박 박자 연습",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [
+      "보건"
+    ],
+    "grade": [
+      "중1",
+      "중2",
+      "중3"
+    ],
+    "target": "student",
+    "activityType": "simulation",
+    "scope": "activity",
+    "minutes": 20,
+    "standards": [],
+    "tags": [
+      "안전",
+      "심폐소생술",
+      "보건"
+    ],
+    "url": "cpr-rhythm.html",
+    "classroom": true,
+    "ai": false,
+    "summary": "분당 100~120회 빠르기를 익히고 소리 없이도 유지되는지 확인하는 연습(깊이는 측정하지 못함)",
+    "makerNote": ""
+  },
+  {
+    "id": "pe/fitness",
+    "title": "건강체력 자기관리",
+    "platform": "pe",
+    "subjects": [
+      "체육"
+    ],
+    "fusion": [],
+    "grade": [
+      "중1",
+      "중2",
+      "중3",
+      "고(체육고)"
+    ],
+    "target": "student",
+    "activityType": "check",
+    "scope": "activity",
+    "minutes": 10,
+    "standards": [],
+    "tags": [
+      "건강",
+      "PAPS",
+      "자기관리"
+    ],
+    "url": "fitness-log.html",
+    "classroom": false,
+    "ai": false,
+    "summary": "체력 종목 기록 변화와 목표, 운동 일지를 이 기기에만 기록하고 앱이 고른 조언으로 돌아보기",
+    "makerNote": ""
+  }
+]
